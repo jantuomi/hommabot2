@@ -15,7 +15,9 @@
   "dependencies": {
     "@tinyhttp/app": "1.2.23",
     "@tinyhttp/logger": "1.2.4",
-    "ts-node": "9.1.1"
+    "telegraf": "4.3.0",
+    "ts-node": "9.1.1",
+    "dotenv": "8.2.0"
   },
   "devDependencies": {
     "@types/node": "14.14.41",

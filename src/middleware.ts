@@ -1,5 +1,18 @@
-import { NextFunction, Request, Response } from "@tinyhttp/app";
+import { Context } from "telegraf";
+import config from "./config";
 
-export const auth = async (_req: Request, _res: Response, next: NextFunction): Promise<void> => {
-  await next();
+const auth = async (ctx: Context, next: () => Promise<void>): Promise<void> => {
+  const userId = ctx.message?.from.id;
+
+  if (!userId || !config.tgUserIds.includes(userId)) {
+    ctx.reply("Käyttäjälläsi ei ole oikeuksia startata HommaBottia.");
+  } else {
+    await next();
+  }
 };
+
+export const tgMiddleware = {
+  auth,
+};
+
+export const httpMiddleware = {};

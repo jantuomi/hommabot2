@@ -1,9 +1,16 @@
 import { App } from "@tinyhttp/app";
 import { logger } from "@tinyhttp/logger";
-import { auth } from "./middleware";
+import { Telegraf } from "telegraf";
+import config from "./config";
+import { tgMiddleware } from "./middleware";
 
 const app = new App();
-const port = process.env.PORT ? Number(process.env.PORT) : 3000;
+console.log(`Setting up Telegram bot with token ${config.tgBotToken}`);
+const bot = new Telegraf(config.tgBotToken);
+
+bot.use(tgMiddleware.auth);
+bot.command("/start", (ctx) => ctx.reply("started"));
+bot.command("/stop", (ctx) => ctx.reply("stopped"));
 
 app
   .use(logger({
@@ -11,19 +18,20 @@ app
       format: "YYYY-MM-DDTHH:mm:ssZ[Z]",
     },
   }))
-  .use(auth)
+  .use(bot.webhookCallback("/webhook/telegram"))
   .get("/", (_, res) => {
-    res.send({ foo: "bar" });
-  })
-  .post("/webhook/start", (_req, res) => {
-    res.send({ webhook: "start" });
-  })
-  .post("/webhook/stop", (_req, res) => {
-    res.send({ webhook: "stop" });
+    res.send({ service: "hommabot2 API" });
   })
   .post("/scheduler/trigger", (_req, res) => {
     res.send({ scheduler: "trigger" });
   });
 
-console.log(`Serving on http://localhost:${port}`);
-app.listen(port);
+console.log(`Setting up webhook on ${config.tgWebhookUrl}`);
+bot.telegram.setWebhook(config.tgWebhookUrl);
+
+console.log(`Serving on http://localhost:${config.port}`);
+app.listen(config.port);
+
+// Enable graceful stop
+process.once("SIGINT", () => bot.stop("SIGINT"));
+process.once("SIGTERM", () => bot.stop("SIGTERM"));
