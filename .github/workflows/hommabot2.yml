@@ -5,7 +5,7 @@ on:
       - main
 
 env:
-  IMAGE: eu.gcr.io/jan-systems/Hommabot2
+  IMAGE: eu.gcr.io/jan-systems/hommabot2
   GCP_PROJECT: jan-systems
   GCR_SERVICE: hommabot
   GCR_PORT: 8080 # Not used in service, but GCR requires a port
