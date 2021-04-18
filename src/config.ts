@@ -21,14 +21,6 @@ if (!tgBotToken) {
   throw new ConfigError("Missing env var TELEGRAM_BOT_TOKEN");
 }
 
-const tgUserIds = process.env.TELEGRAM_USER_IDS
-  ? process.env.TELEGRAM_USER_IDS?.split(",")
-    .map(Number.parseInt)
-  : null;
-if (!tgUserIds) {
-  throw new ConfigError("Missing env var TELEGRAM_USER_IDS");
-}
-
 const sheetsSpreadsheetId = process.env.SHEETS_SPREADSHEET_ID || null;
 if (!sheetsSpreadsheetId) {
   throw new ConfigError("Missing env var SHEETS_SPREADSHEET_ID");
@@ -39,13 +31,18 @@ if (!sheetsRange) {
   throw new ConfigError("Missing env var SHEETS_RANGE");
 }
 
+const pgConnectionUri = process.env.PG_CONNECTION_URI || null;
+if (!pgConnectionUri) {
+  throw new ConfigError("Missing env var PG_CONNECTION_URI");
+}
+
 const config = {
   port: process.env.PORT ? Number(process.env.PORT) : 3000,
   tgWebhookUrl,
   tgBotToken,
-  tgUserIds,
   sheetsSpreadsheetId,
   sheetsRange,
+  pgConnectionUri,
 };
 
 export default config;

@@ -1,16 +1,14 @@
 import { App } from "@tinyhttp/app";
 import { logger } from "@tinyhttp/logger";
-import { Telegraf } from "telegraf";
 import config from "./config";
-import { tgMiddleware } from "./middleware";
+import { bot } from "./tg";
 
-const app = new App();
-console.log(`Setting up Telegram bot with token ${config.tgBotToken}`);
-const bot = new Telegraf(config.tgBotToken);
-
-bot.use(tgMiddleware.auth);
-bot.command("/start", (ctx) => ctx.reply("started"));
-bot.command("/stop", (ctx) => ctx.reply("stopped"));
+const app = new App({
+  onError: (err, _req, res) => {
+    console.log(err);
+    res.status(500).send("Something bad happened");
+  },
+});
 
 app
   .use(logger({
@@ -19,7 +17,7 @@ app
     },
   }))
   .use(bot.webhookCallback("/webhook/telegram"))
-  .get("/", (_, res) => {
+  .get("/", async (_, res) => {
     res.send({ service: "hommabot2 API" });
   })
   .post("/scheduler/trigger", (_req, res) => {

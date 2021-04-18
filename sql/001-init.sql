@@ -1,0 +1,11 @@
+BEGIN TRANSACTION;
+
+CREATE TABLE active_chats (
+  id BIGINT PRIMARY KEY
+);
+
+CREATE TABLE permitted_users (
+  id BIGINT PRIMARY KEY
+);
+
+COMMIT;
