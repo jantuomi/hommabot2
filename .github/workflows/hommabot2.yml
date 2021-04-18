@@ -11,10 +11,12 @@ env:
   GCR_PORT: 8080 # Not used in service, but GCR requires a port
   GCR_PLATFORM: managed
   GCR_REGION: europe-north1
+  CLOUDSQL_INSTANCES: jan-systems:europe-north1:pg1
+  VPC_CONNECTOR: connector1
   # Env vars (normally) comma separated. Use @ as separator since TELEGRAM_USER_IDS has commas.
   GCR_ENV_VARS: "^&^SHEETS_SPREADSHEET_ID=1eKEcFRQBdM2b-pPxnSUEilAKdHnMUNXZljO_I6iqwBw\
                    &SHEETS_RANGE=Aikataulu!A4:C999\
-                   &TELEGRAM_TOKEN=1617681735:AAFr1314RVQt7giW82yh0DYQKqGl4m_B8gM\
+                   &TELEGRAM_BOT_TOKEN=1617681735:AAFr1314RVQt7giW82yh0DYQKqGl4m_B8gM\
                    &TELEGRAM_WEBHOOK_URL=https://hommabot2.jan.systems/webhook/telegram\
                    &PG_CONNECTION_URI=postgresql://hommabot_user:${{ secrets.DATABASE_PASSWORD }}@10.24.240.3/hommabot"
 
@@ -80,4 +82,6 @@ jobs:
             --port=${GCR_PORT} \
             --revision-suffix=${GCR_REVISION_SUFFIX} \
             --set-env-vars=${GCR_ENV_VARS} \
-            --image=${IMAGE_AND_TAG}
+            --image=${IMAGE_AND_TAG} \
+            --set-cloudsql-instances=${CLOUDSQL_INSTANCES} \
+            --vpc-connector=${VPC_CONNECTOR}
