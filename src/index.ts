@@ -1,6 +1,7 @@
 import { App } from "@tinyhttp/app";
 import { logger } from "@tinyhttp/logger";
 import config from "./config";
+import { broadcast } from "./sheets";
 import { bot } from "./tg";
 
 const app = new App({
@@ -20,7 +21,8 @@ app
   .get("/", async (_, res) => {
     res.send({ service: "hommabot2 API" });
   })
-  .post("/scheduler/trigger", (_req, res) => {
+  .post("/scheduler/trigger", async (_req, res) => {
+    await broadcast();
     res.send({ scheduler: "trigger" });
   });
 
