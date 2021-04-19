@@ -1,4 +1,6 @@
 import dotenv from "dotenv";
+import fs from "fs";
+import path from "path";
 
 if (!process.env.SKIP_DOTENV) {
   dotenv.config();
@@ -36,6 +38,17 @@ if (!pgConnectionUri) {
   throw new ConfigError("Missing env var PG_CONNECTION_URI");
 }
 
+const googleSaJsonB64 = process.env.G_SA_JSON_B64 || null;
+if (!googleSaJsonB64) {
+  throw new ConfigError("Missing env var G_SA_JSON_B64");
+}
+
+const googleSaJsonBuff = Buffer.from(googleSaJsonB64, "base64");
+const googleSaJsonUtf8 = googleSaJsonBuff.toString("utf-8");
+const googleSaJson: Record<string, string> = JSON.parse(googleSaJsonUtf8);
+const googleSaJsonPath = path.join("sa_key.json");
+fs.writeFileSync(googleSaJsonPath, googleSaJsonUtf8);
+
 const config = {
   port: process.env.PORT ? Number(process.env.PORT) : 3000,
   tgWebhookUrl,
@@ -43,6 +56,8 @@ const config = {
   sheetsSpreadsheetId,
   sheetsRange,
   pgConnectionUri,
+  googleSaJson,
+  googleSaJsonPath,
 };
 
 export default config;

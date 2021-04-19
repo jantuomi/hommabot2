@@ -1,8 +1,10 @@
 import { App } from "@tinyhttp/app";
 import { logger } from "@tinyhttp/logger";
+import bodyParser from "body-parser";
 import config from "./config";
+import { httpMiddleware } from "./middleware";
 import { buildSheetsClient } from "./sheets";
-import { bot } from "./tg";
+import { bot, broadcastMessage } from "./tg";
 
 const main = async () => {
   const sheets = await buildSheetsClient();
@@ -21,12 +23,32 @@ const main = async () => {
       },
     }))
     .use(bot.webhookCallback("/webhook/telegram"))
+    .use(bodyParser.json())
     .get("/", async (_, res) => {
       res.send({ service: "hommabot2 API" });
     })
-    .post("/scheduler/trigger", async (_req, res) => {
-      await sheets.fetchSheetData();
-      res.send({ scheduler: "trigger" });
+    .post("/scheduler/trigger", httpMiddleware.verifyGoogleJWT, async (_req, res) => {
+      try {
+        const sheetData = await sheets.fetchSheetData();
+        const entries = sheets.processRows(sheetData);
+        const thisWeeksEntries = sheets.filterOnlyThisWeek(entries);
+
+        if (thisWeeksEntries.length > 0) {
+          const tasks = thisWeeksEntries.map(e => `${e.name} (${e.interval})`);
+          const taskText = tasks.join("\n");
+          const msg = `Tällä viikolla tehtävät hommat:\n${taskText}`;
+          await broadcastMessage(msg);
+        } else {
+          await broadcastMessage("Tällä viikolla ei toistuvia hommia! 🎉");
+        }
+
+        const newDateStamps = sheets.updatedLastDoneDateStamps(entries);
+        await sheets.updateSheetLastDoneColumn(newDateStamps);
+        res.sendStatus(200);
+      } catch (err) {
+        console.error(err);
+        res.sendStatus(500);
+      }
     });
 
   console.log(`Setting up webhook on ${config.tgWebhookUrl}`);

@@ -26,6 +26,7 @@ export const addActiveChat = async (id: number): Promise<QueryResultType<void>> 
     INSERT INTO active_chats
     (id) VALUES
     (${id})
+    ON CONFLICT DO NOTHING
   `);
 
 export const removeActiveChat = async (id: number): Promise<QueryResultType<void>> =>

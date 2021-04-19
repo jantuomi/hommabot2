@@ -18,7 +18,8 @@ env:
                    &SHEETS_RANGE=Aikataulu!A4:C999\
                    &TELEGRAM_BOT_TOKEN=1617681735:AAFr1314RVQt7giW82yh0DYQKqGl4m_B8gM\
                    &TELEGRAM_WEBHOOK_URL=https://hommabot.jan.systems/webhook/telegram\
-                   &PG_CONNECTION_URI=postgresql://hommabot_user:${{ secrets.DATABASE_PASSWORD }}@10.24.240.3/hommabot"
+                   &PG_CONNECTION_URI=postgresql://hommabot_user:${{ secrets.DATABASE_PASSWORD }}@10.24.240.3/hommabot\
+                   &G_SA_JSON_B64=${{ secrets.G_SA_JSON_B64 }}"
 
 jobs:
   website:

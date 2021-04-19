@@ -1,12 +1,12 @@
 import { Telegraf } from "telegraf";
 import config from "./config";
-import { addActiveChat, removeActiveChat } from "./db";
+import { addActiveChat, getActiveChats, removeActiveChat } from "./db";
 import { tgMiddleware } from "./middleware";
 
 console.log(`Setting up Telegram bot with token ${config.tgBotToken}`);
 const bot = new Telegraf(config.tgBotToken);
 
-bot.use(tgMiddleware.auth);
+bot.use(tgMiddleware.tgAuth);
 
 bot.command("/start", async (ctx) => {
   await addActiveChat(ctx.chat.id);
@@ -18,4 +18,13 @@ bot.command("/stop", async (ctx) => {
   await ctx.reply("HommaBot pysäytetty!");
 });
 
-export { bot };
+const broadcastMessage = async (msg: string): Promise<void> => {
+  const activeChats = await getActiveChats();
+  const chatIds = activeChats.map(c => c.id);
+
+  await Promise.all(chatIds.map(async chatId =>
+    bot.telegram.sendMessage(chatId, msg),
+  ));
+};
+
+export { bot, broadcastMessage };
