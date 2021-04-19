@@ -13,6 +13,9 @@ class ConfigError extends Error {
   }
 }
 
+const nodeEnv = process.env.NODE_ENV || "development";
+const port = process.env.PORT ? Number(process.env.PORT) : 3000;
+
 const tgWebhookUrl = process.env.TELEGRAM_WEBHOOK_URL || null;
 if (!tgWebhookUrl) {
   throw new ConfigError("Missing env var TELEGRAM_WEBHOOK_URL");
@@ -50,7 +53,8 @@ const googleSaJsonPath = path.join("sa_key.json");
 fs.writeFileSync(googleSaJsonPath, googleSaJsonUtf8);
 
 const config = {
-  port: process.env.PORT ? Number(process.env.PORT) : 3000,
+  nodeEnv,
+  port,
   tgWebhookUrl,
   tgBotToken,
   sheetsSpreadsheetId,

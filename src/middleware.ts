@@ -4,6 +4,7 @@ import got from "got";
 import jwt from "jsonwebtoken";
 
 import { getPermittedUsers } from "./db";
+import config from "./config";
 
 const tgAuth = async (ctx: Context, next: () => Promise<void>): Promise<void> => {
   const userId = ctx.message?.from.id;
@@ -19,6 +20,11 @@ const tgAuth = async (ctx: Context, next: () => Promise<void>): Promise<void> =>
 };
 
 const verifyGoogleJWT = async (req: Request, res: Response, next: () => void): Promise<void> => {
+  if (config.nodeEnv !== "production") {
+    next();
+    return;
+  }
+
   const authHeader = req.headers.authorization || null;
   if (!authHeader) {
     res.sendStatus(401);

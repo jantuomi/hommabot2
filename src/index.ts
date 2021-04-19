@@ -44,6 +44,7 @@ const main = async () => {
 
         const newDateStamps = sheets.updatedLastDoneDateStamps(entries);
         await sheets.updateSheetLastDoneColumn(newDateStamps);
+
         res.sendStatus(200);
       } catch (err) {
         console.error(err);

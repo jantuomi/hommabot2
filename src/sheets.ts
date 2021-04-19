@@ -1,5 +1,5 @@
 import { google } from "googleapis";
-import { add, Duration, parse, format, getDay, subDays, addDays } from "date-fns";
+import { add, set, Duration, parse, format, getDay, subDays, addDays } from "date-fns";
 
 import config from "./config";
 
@@ -88,10 +88,12 @@ const processRow = (row: SheetsRawEntry) => {
 
 const isThisWeek = (entry: SheetsProcessedEntry): boolean => {
   const nextDate = entry.nextDate;
-  const today = new Date();
+  const currentDateTime = new Date();
+  const today = set(currentDateTime, { hours: 0, minutes: 0, seconds: 0, milliseconds: 0 });
   const dayOfWeek = (getDay(today) + 7 - 1) % 7; // getDay returns sunday = 0
   const currentWeekStart = subDays(today, dayOfWeek);
   const currentWeekEnd = addDays(currentWeekStart, 7);
+
   return nextDate >= currentWeekStart && nextDate < currentWeekEnd;
 };
 
