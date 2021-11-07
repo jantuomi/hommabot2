@@ -15,6 +15,7 @@ class ConfigError extends Error {
 
 const nodeEnv = process.env.NODE_ENV || "development";
 const port = process.env.PORT ? Number(process.env.PORT) : 3000;
+const authToken = process.env.AUTH_TOKEN || "";
 
 const tgWebhookUrl = process.env.TELEGRAM_WEBHOOK_URL || null;
 if (!tgWebhookUrl) {
@@ -55,6 +56,7 @@ fs.writeFileSync(googleSaJsonPath, googleSaJsonUtf8);
 const config = {
   nodeEnv,
   port,
+  authToken,
   tgWebhookUrl,
   tgBotToken,
   sheetsSpreadsheetId,

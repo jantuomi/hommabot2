@@ -2,9 +2,9 @@ import { App } from "@tinyhttp/app";
 import { logger } from "@tinyhttp/logger";
 import bodyParser from "body-parser";
 import config from "./config";
-import { httpMiddleware } from "./middleware";
 import { buildSheetsClient } from "./sheets";
 import { bot, broadcastMessage } from "./tg";
+import { httpHeaderAuth } from "./middleware";
 
 const main = async () => {
   const sheets = await buildSheetsClient();
@@ -27,7 +27,7 @@ const main = async () => {
     .get("/", async (_, res) => {
       res.send({ service: "hommabot2 API" });
     })
-    .post("/scheduler/trigger", httpMiddleware.verifyGoogleJWT, async (_req, res) => {
+    .post("/scheduler/trigger", httpHeaderAuth, async (_req, res) => {
       try {
         const sheetData = await sheets.fetchSheetData();
         const entries = sheets.processRows(sheetData);
@@ -38,8 +38,11 @@ const main = async () => {
           const taskText = tasks.join("\n");
           const msg = `Tällä viikolla tehtävät hommat:\n${taskText}`;
           await broadcastMessage(msg);
+          console.log("Broadcasted message:", msg);
         } else {
-          await broadcastMessage("Tällä viikolla ei toistuvia hommia! 🎉");
+          const msg = "Tällä viikolla ei toistuvia hommia! 🎉";
+          await broadcastMessage(msg);
+          console.log("Broadcasted message:", msg);
         }
 
         const newDateStamps = sheets.updatedLastDoneDateStamps(entries);

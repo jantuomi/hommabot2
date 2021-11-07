@@ -1,12 +1,12 @@
 import { Telegraf } from "telegraf";
 import config from "./config";
 import { addActiveChat, getActiveChats, removeActiveChat } from "./db";
-import { tgMiddleware } from "./middleware";
+import { tgAuth } from "./middleware";
 
 console.log(`Setting up Telegram bot with token ${config.tgBotToken}`);
 const bot = new Telegraf(config.tgBotToken);
 
-bot.use(tgMiddleware.tgAuth);
+bot.use(tgAuth);
 
 bot.command("/start", async (ctx) => {
   await addActiveChat(ctx.chat.id);
