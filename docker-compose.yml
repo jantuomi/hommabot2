@@ -12,7 +12,7 @@ services:
       - ./sql:/sql
   hommabot2:
     build: .
-    image: registry.digitalocean.com/jan-systems-registry/hommabot2:latest
+    image: registry.jan.systems/hommabot2:latest
     env_file: .env
     environment:
       PORT: 3000
