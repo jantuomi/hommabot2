@@ -1,70 +1,51 @@
-import { App } from "@tinyhttp/app";
-import { logger } from "@tinyhttp/logger";
-import bodyParser from "body-parser";
-import config from "./config";
 import { buildSheetsClient } from "./sheets";
-import { bot, broadcastMessage } from "./tg";
-import { httpHeaderAuth } from "./middleware";
+import { broadcastMessage } from "./tg";
 
-const main = async () => {
+const main = async (): Promise<void> => {
+  const startTime = Date.now();
+  console.log("[run] Starting recurring tasks notification script");
+
   const sheets = await buildSheetsClient();
 
-  const app = new App({
-    onError: (err, _req, res) => {
-      console.log(err);
-      res.status(500).send("Something bad happened");
-    },
-  });
+  // 1. Fetch raw sheet data
+  const sheetData = await sheets.fetchSheetData();
+  console.log(`[run] Retrieved ${sheetData.length} raw rows from Sheets`);
 
-  app
-    .use(logger({
-      timestamp: {
-        format: "YYYY-MM-DDTHH:mm:ssZ[Z]",
-      },
-    }))
-    .use(bot.webhookCallback("/webhook/telegram"))
-    .use(bodyParser.json())
-    .get("/", async (_, res) => {
-      res.send({ service: "hommabot2 API" });
-    })
-    .post("/scheduler/trigger", httpHeaderAuth, async (_req, res) => {
-      try {
-        const sheetData = await sheets.fetchSheetData();
-        const entries = sheets.processRows(sheetData);
-        const thisWeeksEntries = sheets.filterOnlyThisWeek(entries);
+  // 2. Process rows (compute next/last dates)
+  const entries = sheets.processRows(sheetData);
+  console.log(`[run] Processed ${entries.length} entries`);
 
-        if (thisWeeksEntries.length > 0) {
-          const tasks = thisWeeksEntries.map(e => `${e.name} (${e.interval})`);
-          const taskText = tasks.join("\n");
-          const msg = `Tällä viikolla tehtävät hommat:\n${taskText}`;
-          await broadcastMessage(msg);
-          console.log("Broadcasted message:", msg);
-        } else {
-          const msg = "Tällä viikolla ei toistuvia hommia! 🎉";
-          await broadcastMessage(msg);
-          console.log("Broadcasted message:", msg);
-        }
+  // 3. Filter only tasks due this week
+  const thisWeeksEntries = sheets.filterOnlyThisWeek(entries);
+  console.log(`[run] Found ${thisWeeksEntries.length} entries due this week`);
 
-        const newDateStamps = sheets.updatedLastDoneDateStamps(entries);
-        await sheets.updateSheetLastDoneColumn(newDateStamps);
+  // 4. Compose & broadcast Telegram message
+  if (thisWeeksEntries.length > 0) {
+    const tasks = thisWeeksEntries.map((e) => `${e.name} (${e.interval})`);
+    const taskText = tasks.join("\n");
+    const msg = `Tällä viikolla tehtävät hommat:\n${taskText}`;
+    await broadcastMessage(msg);
+    console.log("[run] Broadcasted weekly task message");
+  } else {
+    const msg = "Tällä viikolla ei toistuvia hommia! 🎉";
+    await broadcastMessage(msg);
+    console.log("[run] Broadcasted empty-week message");
+  }
 
-        res.sendStatus(200);
-      } catch (err) {
-        console.error(err);
-        res.sendStatus(500);
-      }
-    });
+  // 5. Update "last done" column with new date stamps (only tasks done this week are advanced)
+  const newDateStamps = sheets.updatedLastDoneDateStamps(entries);
+  await sheets.updateSheetLastDoneColumn(newDateStamps);
+  console.log("[run] Updated last done column in sheet");
 
-  console.log(`Setting up webhook on ${config.tgWebhookUrl}`);
-  bot.telegram.setWebhook(config.tgWebhookUrl);
-
-  console.log(`Serving on http://localhost:${config.port}`);
-  app.listen(config.port);
-
+  const durationMs = Date.now() - startTime;
+  console.log(`[run] Completed successfully in ${durationMs}ms`);
 };
 
-main();
-
-// Enable graceful stop
-process.once("SIGINT", () => bot.stop("SIGINT"));
-process.once("SIGTERM", () => bot.stop("SIGTERM"));
+main()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch((err) => {
+    console.error("[run] Fatal error:", err);
+    process.exit(1);
+  });

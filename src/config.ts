@@ -14,13 +14,6 @@ class ConfigError extends Error {
 }
 
 const nodeEnv = process.env.NODE_ENV || "development";
-const port = process.env.PORT ? Number(process.env.PORT) : 3000;
-const authToken = process.env.AUTH_TOKEN || "";
-
-const tgWebhookUrl = process.env.TELEGRAM_WEBHOOK_URL || null;
-if (!tgWebhookUrl) {
-  throw new ConfigError("Missing env var TELEGRAM_WEBHOOK_URL");
-}
 
 const tgBotToken = process.env.TELEGRAM_BOT_TOKEN || null;
 if (!tgBotToken) {
@@ -37,10 +30,8 @@ if (!sheetsRange) {
   throw new ConfigError("Missing env var SHEETS_RANGE");
 }
 
-const pgConnectionUri = process.env.PG_CONNECTION_URI || null;
-if (!pgConnectionUri) {
-  throw new ConfigError("Missing env var PG_CONNECTION_URI");
-}
+const sqlitePath =
+  process.env.SQLITE_PATH || path.join(process.cwd(), "data", "hommabot.db");
 
 const googleSaJsonB64 = process.env.G_SA_JSON_B64 || null;
 if (!googleSaJsonB64) {
@@ -55,13 +46,10 @@ fs.writeFileSync(googleSaJsonPath, googleSaJsonUtf8);
 
 const config = {
   nodeEnv,
-  port,
-  authToken,
-  tgWebhookUrl,
   tgBotToken,
   sheetsSpreadsheetId,
   sheetsRange,
-  pgConnectionUri,
+  sqlitePath,
   googleSaJson,
   googleSaJsonPath,
 };

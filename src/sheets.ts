@@ -1,5 +1,14 @@
 import { google } from "googleapis";
-import { add, set, Duration, parse, format, getDay, subDays, addDays } from "date-fns";
+import {
+  add,
+  set,
+  Duration,
+  parse,
+  format,
+  getDay,
+  subDays,
+  addDays,
+} from "date-fns";
 
 import config from "./config";
 
@@ -89,7 +98,12 @@ const processRow = (row: SheetsRawEntry) => {
 const isThisWeek = (entry: SheetsProcessedEntry): boolean => {
   const nextDate = entry.nextDate;
   const currentDateTime = new Date();
-  const today = set(currentDateTime, { hours: 0, minutes: 0, seconds: 0, milliseconds: 0 });
+  const today = set(currentDateTime, {
+    hours: 0,
+    minutes: 0,
+    seconds: 0,
+    milliseconds: 0,
+  });
   const dayOfWeek = (getDay(today) + 7 - 1) % 7; // getDay returns sunday = 0
   const currentWeekStart = subDays(today, dayOfWeek);
   const currentWeekEnd = addDays(currentWeekStart, 7);
@@ -108,9 +122,7 @@ export const buildSheetsClient = async () => {
     keyFile: config.googleSaJsonPath,
   });
 
-  // Acquire an auth client, and bind it to all future calls
-  const authClient = await auth.getClient();
-  google.options({ auth: authClient });
+  google.options({ auth });
   const sheets = google.sheets({ version: "v4" });
 
   const fetchSheetData = async (): Promise<SheetsRawEntry[]> => {
@@ -121,7 +133,7 @@ export const buildSheetsClient = async () => {
       });
 
       const entriesAsLists = res.data.values || [];
-      const rawEntries: SheetsRawEntry[] = entriesAsLists.map(row => ({
+      const rawEntries: SheetsRawEntry[] = entriesAsLists.map((row) => ({
         intervalStr: row[0],
         name: row[1],
         lastDoneDateStr: row[2],
@@ -158,7 +170,7 @@ export const buildSheetsClient = async () => {
     const lastDoneColumnRange = getRightmostColumnInRange(config.sheetsRange);
 
     const body = {
-      values: newDateStamps.map(nds => [nds]),
+      values: newDateStamps.map((nds) => [nds]),
     };
 
     await sheets.spreadsheets.values.update({
@@ -171,10 +183,14 @@ export const buildSheetsClient = async () => {
 
   const processRows = (rows: SheetsRawEntry[]) => rows.map(processRow);
 
-  const filterOnlyThisWeek = (entries: SheetsProcessedEntry[]): SheetsProcessedEntry[] => entries.filter(isThisWeek);
+  const filterOnlyThisWeek = (
+    entries: SheetsProcessedEntry[],
+  ): SheetsProcessedEntry[] => entries.filter(isThisWeek);
 
-  const updatedLastDoneDateStamps = (entries: SheetsProcessedEntry[]): string[] =>
-    entries.map(e => isThisWeek(e) ? e.nextDateStamp : e.lastDateStamp);
+  const updatedLastDoneDateStamps = (
+    entries: SheetsProcessedEntry[],
+  ): string[] =>
+    entries.map((e) => (isThisWeek(e) ? e.nextDateStamp : e.lastDateStamp));
 
   return {
     fetchSheetData,

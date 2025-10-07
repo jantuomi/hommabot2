@@ -1,39 +1,48 @@
-import { Request, Response } from "@tinyhttp/app";
-import { Context } from "telegraf";
-import config from "./config";
+/**
+ * Telegram-only middleware utilities.
+ *
+ * HTTP server functionality has been removed, so any HTTP-specific middleware
+ * (e.g. header-based auth) has been deleted.
+ *
+ * This module currently exposes:
+ *   tgAuth - Ensures that only permitted Telegram user IDs can invoke bot commands.
+ */
 
+import { Context } from "telegraf";
 import { getPermittedUsers } from "./db";
 
-const tgAuth = async (ctx: Context, next: () => Promise<void>): Promise<void> => {
+/**
+ * Telegram authorization middleware.
+ *
+ * Logic:
+ * 1. Extract the Telegram user ID from the incoming context.
+ * 2. Load the list of permitted user IDs from the SQLite database.
+ * 3. If the user ID is not present, reply with an authorization failure message
+ *    and do NOT call next().
+ * 4. Otherwise, continue to the next middleware/handler.
+ */
+export const tgAuth = async (
+  ctx: Context,
+  next: () => Promise<void>,
+): Promise<void> => {
   const userId = ctx.message?.from.id;
+  if (!userId) {
+    await ctx.reply("Käyttäjätunnusta ei voitu lukea (user id puuttuu).");
+    return;
+  }
 
-  const tgUsers = await getPermittedUsers();
-  const tgUserIds = tgUsers.map(u => u.id);
+  try {
+    const permitted = await getPermittedUsers();
+    const permittedIds = new Set(permitted.map((u) => u.id));
 
-  if (!userId || !tgUserIds.includes(userId)) {
-    ctx.reply("Käyttäjälläsi ei ole oikeuksia startata HommaBottia.");
-  } else {
+    if (!permittedIds.has(userId)) {
+      await ctx.reply("Käyttäjälläsi ei ole oikeuksia käyttää HommaBottia.");
+      return;
+    }
+
     await next();
+  } catch (err) {
+    console.error("[tgAuth] Authorization check failed:", err);
+    await ctx.reply("Odottamaton virhe valtuutuksessa.");
   }
-};
-
-const httpHeaderAuth = async (req: Request, res: Response, next: () => void): Promise<void> => {
-  const authHeader = req.headers.authorization || null;
-  if (!authHeader) {
-    res.sendStatus(401);
-    return;
-  }
-
-  const token = authHeader.split(" ")[1];
-  if (!token || token !== config.authToken) {
-    res.sendStatus(401);
-    return;
-  }
-
-  next();
-}
-
-export {
-  tgAuth,
-  httpHeaderAuth,
 };
