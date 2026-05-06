@@ -1,85 +1,60 @@
 # hommabot2
 
-Rewrite of hommabot (Python3) in TS.
+Telegram bot for recurring household tasks and shopping lists.
 
-1. Reads Google Sheets for recurring tasks
-2. Determines which tasks fall in the current week
-3. Broadcasts a Telegram message to all active chats
-4. Updates the "last done" column for tasks that became due
+## Features
 
-## Persistence
+- **Recurring tasks** — add tasks with intervals (days/weeks/months/years), get weekly Monday broadcasts of what's due
+- **Shopping list** — shared list with inline delete buttons
+- **Persistence** — embedded SQLite (STRICT tables), no external services needed
 
-- Embedded SQLite (STRICT tables) auto-initialized on first run
-- Single connection (read + write)
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `/start` | Register chat for weekly broadcasts |
+| `/stop` | Unregister chat |
+| `/newtask <interval> <name>` | Add recurring task (e.g. `/newtask 2vk Imurointi`) |
+| `/tasks` | Show all tasks with ✅ done / 🗑️ delete buttons |
+| `/done <id>` | Mark task done |
+| `/edittask <id> <interval> <name>` | Edit a task |
+| `/add <item>` | Add item to shopping list |
+| `/list` | Show shopping list with ❌ delete buttons |
+
+**Intervals:** `pv` (day), `vk` (week), `kk` (month), `v` (year). Prefix with number, e.g. `2vk` = every 2 weeks.
 
 ## Setup
 
-1. Install dependencies (includes better-sqlite3):
+1. Install dependencies:
 
 ```sh
 npm install
 ```
 
-2. Create/update your `.env` (minimum required):
+2. Create `.env`:
 
 ```sh
 TELEGRAM_BOT_TOKEN=...
-SHEETS_SPREADSHEET_ID=...
-SHEETS_RANGE=...
-G_SA_JSON_B64=...          # Base64-encoded Google Service Account JSON
 # Optional:
 # SQLITE_PATH=./data/hommabot.db
 ```
 
-3. (Optional) Seed permitted Telegram user IDs (only these can /start to register chats):
+3. (Optional) Seed permitted users:
 
 ```sh
 sqlite3 data/hommabot.db "INSERT OR IGNORE INTO permitted_users (id) VALUES (123456789);"
 ```
 
-Repeat with additional IDs as needed.
-
-4. (Optional) Pre-register an active chat manually (normally added via /start):
-
-```sh
-sqlite3 data/hommabot.db "INSERT OR IGNORE INTO active_chats (id) VALUES (-1001234567890);"
-```
-
 ## Running
-
-Direct TypeScript execution:
 
 ```sh
 npm start
 ```
 
+The bot runs as a long-lived process. Weekly task broadcasts fire every Monday at 09:00 Finland time.
+
 ## Building
 
 ```sh
 npm run build
-```
-
-## Automating (cron example)
-
-Run every Monday at 08:00:
-
-```
-0 8 * * 1 /usr/bin/node /path/to/hommabot2/build/index.js >> /path/to/hommabot2/hommabot.log 2>&1
-```
-
-## Inspecting the database
-
-```sh
-sqlite3 data/hommabot.db ".tables"
-sqlite3 data/hommabot.db "SELECT * FROM active_chats;"
-sqlite3 data/hommabot.db "SELECT * FROM permitted_users;"
-```
-
-## Notes
-
-- To add new permitted users at any time, insert into `permitted_users`.
-- To clear active chats:
-
-```sh
-sqlite3 data/hommabot.db "DELETE FROM active_chats;"
 ```

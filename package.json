@@ -2,9 +2,10 @@
   "name": "hommabot2",
   "version": "2.0.0",
   "description": "",
-  "main": "src/index.ts",
+  "main": "src/bot.ts",
   "scripts": {
-    "build": "bun build src/index.ts --outfile=build/index.js --target=node --format=cjs --minify",
+    "start": "npx tsx src/bot.ts",
+    "build": "bun build src/bot.ts --outfile=build/index.js --target=node --format=cjs --minify",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -13,14 +14,11 @@
   "dependencies": {
     "date-fns": "4.1.0",
     "dotenv": "17.4.2",
-    "googleapis": "171.4.0",
-    "got": "15.0.3",
     "better-sqlite3": "12.9.0",
     "telegraf": "4.16.3"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
-    "@types/got": "9.6.12",
     "@types/node": "25.6.0"
   }
 }

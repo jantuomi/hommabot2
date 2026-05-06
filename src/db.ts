@@ -51,6 +51,20 @@ const ddl = `
   CREATE TABLE IF NOT EXISTS permitted_users (
     id INTEGER PRIMARY KEY
   ) STRICT;
+
+  CREATE TABLE IF NOT EXISTS shopping_list (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    item TEXT NOT NULL,
+    added_by INTEGER NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  ) STRICT;
+
+  CREATE TABLE IF NOT EXISTS recurring_tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    interval TEXT NOT NULL,
+    last_done TEXT
+  ) STRICT;
   COMMIT;
 `;
 db.exec(ddl);
@@ -116,4 +130,64 @@ export const getPermittedUsers = async (): Promise<
 > => {
   const stmt = db.prepare("SELECT id FROM permitted_users");
   return stmt.all() as PermittedUser[];
+};
+
+/* Shopping list */
+
+interface ShoppingItem {
+  id: number;
+  item: string;
+}
+
+export const addShoppingItem = (item: string, addedBy: number): void => {
+  withWriteTx((db) => {
+    db.prepare("INSERT INTO shopping_list (item, added_by) VALUES (?, ?)").run(item, addedBy);
+  });
+};
+
+export const getShoppingList = (): ShoppingItem[] => {
+  return db.prepare("SELECT id, item FROM shopping_list ORDER BY id").all() as ShoppingItem[];
+};
+
+export const removeShoppingItem = (id: number): void => {
+  withWriteTx((db) => {
+    db.prepare("DELETE FROM shopping_list WHERE id = ?").run(id);
+  });
+};
+
+/* Recurring tasks */
+
+export interface RecurringTask {
+  id: number;
+  name: string;
+  interval: string;
+  last_done: string | null;
+}
+
+export const addRecurringTask = (name: string, interval: string): void => {
+  withWriteTx((db) => {
+    db.prepare("INSERT INTO recurring_tasks (name, interval) VALUES (?, ?)").run(name, interval);
+  });
+};
+
+export const getRecurringTasks = (): RecurringTask[] => {
+  return db.prepare("SELECT id, name, interval, last_done FROM recurring_tasks ORDER BY id").all() as RecurringTask[];
+};
+
+export const updateRecurringTask = (id: number, name: string, interval: string): void => {
+  withWriteTx((db) => {
+    db.prepare("UPDATE recurring_tasks SET name = ?, interval = ? WHERE id = ?").run(name, interval, id);
+  });
+};
+
+export const markTaskDone = (id: number, date: string): void => {
+  withWriteTx((db) => {
+    db.prepare("UPDATE recurring_tasks SET last_done = ? WHERE id = ?").run(date, id);
+  });
+};
+
+export const removeRecurringTask = (id: number): void => {
+  withWriteTx((db) => {
+    db.prepare("DELETE FROM recurring_tasks WHERE id = ?").run(id);
+  });
 };

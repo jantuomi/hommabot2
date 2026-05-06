@@ -1,11 +1,5 @@
 /**
  * Telegram-only middleware utilities.
- *
- * HTTP server functionality has been removed, so any HTTP-specific middleware
- * (e.g. header-based auth) has been deleted.
- *
- * This module currently exposes:
- *   tgAuth - Ensures that only permitted Telegram user IDs can invoke bot commands.
  */
 
 import { Context } from "telegraf";
@@ -25,7 +19,7 @@ export const tgAuth = async (
   ctx: Context,
   next: () => Promise<void>,
 ): Promise<void> => {
-  const userId = ctx.message?.from.id;
+  const userId = ctx.from?.id;
   if (!userId) {
     await ctx.reply("Käyttäjätunnusta ei voitu lukea (user id puuttuu).");
     return;
@@ -43,6 +37,6 @@ export const tgAuth = async (
     await next();
   } catch (err) {
     console.error("[tgAuth] Authorization check failed:", err);
-    await ctx.reply("Odottamaton virhe valtuutuksessa.");
+    await ctx.reply("Odottamaton virhe luvituksessa.");
   }
 };
