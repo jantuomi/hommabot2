@@ -1,9 +1,5 @@
 {
   "compilerOptions": {
-    // This tsconfig is a minimal placeholder retained only for IDE tooling / editor intellisense.
-    // The build pipeline uses `bun build` (see package.json scripts) to produce a single
-    // CommonJS bundle at build/index.js suitable for running with plain `node`.
-    // No type-check step is performed as part of the build.
     "target": "ES2020",
     "module": "CommonJS",
     "moduleResolution": "Node",
@@ -13,5 +9,5 @@
     "resolveJsonModule": true
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "build"]
+  "exclude": ["node_modules"]
 }

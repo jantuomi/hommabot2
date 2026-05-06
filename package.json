@@ -4,8 +4,7 @@
   "description": "",
   "main": "src/bot.ts",
   "scripts": {
-    "start": "npx tsx src/bot.ts",
-    "build": "bun build src/bot.ts --outfile=build/index.js --target=node --format=cjs --minify",
+    "start": "tsx src/bot.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -19,6 +18,7 @@
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
-    "@types/node": "25.6.0"
+    "@types/node": "25.6.0",
+    "tsx": "^4.19.0"
   }
 }

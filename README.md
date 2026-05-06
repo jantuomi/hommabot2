@@ -51,10 +51,4 @@ sqlite3 data/hommabot.db "INSERT OR IGNORE INTO permitted_users (id) VALUES (123
 npm start
 ```
 
-The bot runs as a long-lived process. Weekly task broadcasts fire every Monday at 09:00 Finland time.
-
-## Building
-
-```sh
-npm run build
-```
+The bot runs as a long-lived process. Weekly task broadcasts fire every Monday at 09:00 (configured via `TZ` env var, defaults to `Europe/Helsinki`).
