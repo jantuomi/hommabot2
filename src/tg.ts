@@ -77,7 +77,7 @@ bot.command("tasks", async (ctx) => {
     return `*${t.id}.* ${t.name}\n   ↻ ${t.interval} | edellinen: ${done} | seuraava: ${next}`;
   });
   const buttons = tasks.map((t) => [
-    Markup.button.callback(`✅ ${t.name}`, `taskdone:${t.id}`),
+    Markup.button.callback(`✅`, `taskdone:${t.id}`),
     Markup.button.callback(`🗑️`, `taskdel:${t.id}`),
   ]);
   await ctx.reply(`📋 Toistuvat tehtävät:\n\n${lines.join("\n\n")}`, {
