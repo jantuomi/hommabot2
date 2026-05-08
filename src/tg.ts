@@ -24,7 +24,7 @@ bot.command("/stop", async (ctx) => {
 // --- Shopping list ---
 
 bot.command("add", async (ctx) => {
-  const item = ctx.message.text.replace(/^\/add\s*/, "").trim();
+  const item = ctx.message.text.replace(/^\/add(@\w+)?\s*/, "").trim();
   if (!item) { await ctx.reply("Käyttö: /add <tuote>"); return; }
   addShoppingItem(item, ctx.message.from.id);
   await ctx.reply(`Lisätty: ${item}`);
@@ -52,7 +52,7 @@ bot.action(/^del:(\d+)$/, async (ctx) => {
 // --- Recurring tasks ---
 
 bot.command("newtask", async (ctx) => {
-  const args = ctx.message.text.replace(/^\/newtask\s*/, "").trim();
+  const args = ctx.message.text.replace(/^\/newtask(@\w+)?\s*/, "").trim();
   const match = /^(\d+(?:pv|vk|kk|v))\s+(.+)$/.exec(args);
   if (!match) {
     await ctx.reply("Käyttö: /newtask <intervalli> <nimi>\nEsim: /newtask 2vk Imurointi\n\nIntervallit: pv, vk, kk, v");
@@ -87,7 +87,7 @@ bot.command("tasks", async (ctx) => {
 });
 
 bot.command("edittask", async (ctx) => {
-  const args = ctx.message.text.replace(/^\/edittask\s*/, "").trim();
+  const args = ctx.message.text.replace(/^\/edittask(@\w+)?\s*/, "").trim();
   const match = /^(\d+)\s+(\d+(?:pv|vk|kk|v))\s+(.+)$/.exec(args);
   if (!match) {
     await ctx.reply("Käyttö: /edittask <id> <intervalli> <nimi>\nEsim: /edittask 3 1kk Ikkunoiden pesu");
@@ -104,7 +104,7 @@ bot.command("edittask", async (ctx) => {
 });
 
 bot.command("done", async (ctx) => {
-  const idStr = ctx.message.text.replace(/^\/done\s*/, "").trim();
+  const idStr = ctx.message.text.replace(/^\/done(@\w+)?\s*/, "").trim();
   const id = Number(idStr);
   if (!id) { await ctx.reply("Käyttö: /done <id>"); return; }
   markTaskDone(id, today());
