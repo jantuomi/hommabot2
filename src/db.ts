@@ -38,7 +38,7 @@ const db = new Database(DB_FILE, {
 db.pragma("journal_mode = WAL");
 db.pragma("busy_timeout = 5000");
 db.pragma("synchronous = NORMAL");
-db.pragma("cache_size = 1000000000");
+db.pragma("cache_size = 10000");
 db.pragma("foreign_keys = ON");
 db.pragma("temp_store = MEMORY");
 
@@ -46,25 +46,25 @@ const ddl = `
   BEGIN IMMEDIATE;
   CREATE TABLE IF NOT EXISTS active_chats (
     id INTEGER PRIMARY KEY
-  ) STRICT;
+   ) STRICT;
 
   CREATE TABLE IF NOT EXISTS permitted_users (
     id INTEGER PRIMARY KEY
-  ) STRICT;
+   ) STRICT;
 
   CREATE TABLE IF NOT EXISTS shopping_list (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     item TEXT NOT NULL,
     added_by INTEGER NOT NULL,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
-  ) STRICT;
+   ) STRICT;
 
   CREATE TABLE IF NOT EXISTS recurring_tasks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     interval TEXT NOT NULL,
     last_done TEXT
-  ) STRICT;
+   ) STRICT;
   COMMIT;
 `;
 db.exec(ddl);
@@ -79,14 +79,14 @@ function ensurePath() {
   }
 }
 
+const begin = db.prepare("BEGIN IMMEDIATE");
+const commit = db.prepare("COMMIT");
+const rollback = db.prepare("ROLLBACK");
+
 /**
  * Wrap a write operation in a BEGIN IMMEDIATE transaction.
  */
 function withWriteTx<T>(fn: (db: BetterSqliteDb) => T): T {
-  const begin = db.prepare("BEGIN IMMEDIATE");
-  const commit = db.prepare("COMMIT");
-  const rollback = db.prepare("ROLLBACK");
-
   begin.run();
   try {
     const result = fn(db);
@@ -141,12 +141,17 @@ interface ShoppingItem {
 
 export const addShoppingItem = (item: string, addedBy: number): void => {
   withWriteTx((db) => {
-    db.prepare("INSERT INTO shopping_list (item, added_by) VALUES (?, ?)").run(item, addedBy);
+    db.prepare("INSERT INTO shopping_list (item, added_by) VALUES (?, ?)").run(
+      item,
+      addedBy,
+    );
   });
 };
 
 export const getShoppingList = (): ShoppingItem[] => {
-  return db.prepare("SELECT id, item FROM shopping_list ORDER BY id").all() as ShoppingItem[];
+  return db
+    .prepare("SELECT id, item FROM shopping_list ORDER BY id")
+    .all() as ShoppingItem[];
 };
 
 export const removeShoppingItem = (id: number): void => {
@@ -166,23 +171,38 @@ export interface RecurringTask {
 
 export const addRecurringTask = (name: string, interval: string): void => {
   withWriteTx((db) => {
-    db.prepare("INSERT INTO recurring_tasks (name, interval) VALUES (?, ?)").run(name, interval);
+    db.prepare(
+      "INSERT INTO recurring_tasks (name, interval) VALUES (?, ?)",
+    ).run(name, interval);
   });
 };
 
 export const getRecurringTasks = (): RecurringTask[] => {
-  return db.prepare("SELECT id, name, interval, last_done FROM recurring_tasks ORDER BY id").all() as RecurringTask[];
+  return db
+    .prepare(
+      "SELECT id, name, interval, last_done FROM recurring_tasks ORDER BY id",
+    )
+    .all() as RecurringTask[];
 };
 
-export const updateRecurringTask = (id: number, name: string, interval: string): void => {
+export const updateRecurringTask = (
+  id: number,
+  name: string,
+  interval: string,
+): void => {
   withWriteTx((db) => {
-    db.prepare("UPDATE recurring_tasks SET name = ?, interval = ? WHERE id = ?").run(name, interval, id);
+    db.prepare(
+      "UPDATE recurring_tasks SET name = ?, interval = ? WHERE id = ?",
+    ).run(name, interval, id);
   });
 };
 
 export const markTaskDone = (id: number, date: string): void => {
   withWriteTx((db) => {
-    db.prepare("UPDATE recurring_tasks SET last_done = ? WHERE id = ?").run(date, id);
+    db.prepare("UPDATE recurring_tasks SET last_done = ? WHERE id = ?").run(
+      date,
+      id,
+    );
   });
 };
 

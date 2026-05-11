@@ -13,7 +13,9 @@ const runWeeklyTasks = async (): Promise<void> => {
     const dueTasks = tasks.filter(isThisWeek);
 
     if (dueTasks.length > 0) {
-      const taskText = dueTasks.map((t) => `• ${t.name} (${t.interval})`).join("\n");
+      const taskText = dueTasks
+        .map((t) => `• ${t.name} (${t.interval})`)
+        .join("\n");
       await broadcastMessage(`📋 Tällä viikolla tehtävät hommat:\n${taskText}`);
       const todayStr = today();
       for (const t of dueTasks) {

@@ -1,4 +1,11 @@
-import { add, parse, format, startOfWeek, addWeeks, isWithinInterval, Duration } from "date-fns";
+import {
+  add,
+  parse,
+  startOfWeek,
+  addWeeks,
+  isWithinInterval,
+  Duration,
+} from "date-fns";
 import { RecurringTask } from "./db";
 import config from "./config";
 
@@ -34,6 +41,8 @@ export const isThisWeek = (task: RecurringTask): boolean => {
   return isWithinInterval(nextDate, { start: weekStart, end: weekEnd });
 };
 
-export const formatDate = (d: Date): string => format(d, "yyyy-MM-dd");
+export const formatDate = (d: Date): string =>
+  d.toLocaleDateString("en-CA", { timeZone: config.tz });
 
-export const today = (): string => format(now(), "yyyy-MM-dd");
+export const today = (): string =>
+  new Date().toLocaleDateString("en-CA", { timeZone: config.tz });

@@ -1,9 +1,17 @@
 import { Markup, Telegraf } from "telegraf";
 import config from "./config";
 import {
-  addActiveChat, getActiveChats, removeActiveChat,
-  addShoppingItem, getShoppingList, removeShoppingItem,
-  addRecurringTask, getRecurringTasks, updateRecurringTask, markTaskDone, removeRecurringTask,
+  addActiveChat,
+  getActiveChats,
+  removeActiveChat,
+  addShoppingItem,
+  getShoppingList,
+  removeShoppingItem,
+  addRecurringTask,
+  getRecurringTasks,
+  updateRecurringTask,
+  markTaskDone,
+  removeRecurringTask,
 } from "./db";
 import { tgAuth } from "./middleware";
 import { getNextDate, formatDate, parseInterval, today } from "./tasks";
@@ -25,16 +33,24 @@ bot.command("/stop", async (ctx) => {
 
 bot.command("add", async (ctx) => {
   const item = ctx.message.text.replace(/^\/add(@\w+)?\s*/, "").trim();
-  if (!item) { await ctx.reply("Käyttö: /add <tuote>"); return; }
+  if (!item) {
+    await ctx.reply("Käyttö: /add <tuote>");
+    return;
+  }
   addShoppingItem(item, ctx.message.from.id);
   await ctx.reply(`Lisätty: ${item}`);
 });
 
 bot.command("list", async (ctx) => {
   const items = getShoppingList();
-  if (items.length === 0) { await ctx.reply("Ostoslista on tyhjä."); return; }
+  if (items.length === 0) {
+    await ctx.reply("Ostoslista on tyhjä.");
+    return;
+  }
   const text = items.map((i, idx) => `${idx + 1}. ${i.item}`).join("\n");
-  const buttons = items.map((i) => [Markup.button.callback(`❌ ${i.item}`, `del:${i.id}`)]);
+  const buttons = items.map((i) => [
+    Markup.button.callback(`❌ ${i.item}`, `del:${i.id}`),
+  ]);
   await ctx.reply(`🛒 Ostoslista:\n${text}`, Markup.inlineKeyboard(buttons));
 });
 
@@ -43,10 +59,18 @@ bot.action(/^del:(\d+)$/, async (ctx) => {
   removeShoppingItem(id);
   await ctx.answerCbQuery("Poistettu!");
   const items = getShoppingList();
-  if (items.length === 0) { await ctx.editMessageText("Ostoslista on tyhjä."); return; }
+  if (items.length === 0) {
+    await ctx.editMessageText("Ostoslista on tyhjä.");
+    return;
+  }
   const text = items.map((i, idx) => `${idx + 1}. ${i.item}`).join("\n");
-  const buttons = items.map((i) => [Markup.button.callback(`❌ ${i.item}`, `del:${i.id}`)]);
-  await ctx.editMessageText(`🛒 Ostoslista:\n${text}`, Markup.inlineKeyboard(buttons));
+  const buttons = items.map((i) => [
+    Markup.button.callback(`❌ ${i.item}`, `del:${i.id}`),
+  ]);
+  await ctx.editMessageText(
+    `🛒 Ostoslista:\n${text}`,
+    Markup.inlineKeyboard(buttons),
+  );
 });
 
 // --- Recurring tasks ---
@@ -55,13 +79,17 @@ bot.command("newtask", async (ctx) => {
   const args = ctx.message.text.replace(/^\/newtask(@\w+)?\s*/, "").trim();
   const match = /^(\d+(?:pv|vk|kk|v))\s+(.+)$/.exec(args);
   if (!match) {
-    await ctx.reply("Käyttö: /newtask <intervalli> <nimi>\nEsim: /newtask 2vk Imurointi\n\nIntervallit: pv, vk, kk, v");
+    await ctx.reply(
+      "Käyttö: /newtask <intervalli> <nimi>\nEsim: /newtask 2vk Imurointi\n\nIntervallit: pv, vk, kk, v",
+    );
     return;
   }
   try {
     parseInterval(match[1]);
   } catch {
-    await ctx.reply("Virheellinen intervalli. Käytä: pv, vk, kk, v (esim. 2vk, 1kk)");
+    await ctx.reply(
+      "Virheellinen intervalli. Käytä: pv, vk, kk, v (esim. 2vk, 1kk)",
+    );
     return;
   }
   addRecurringTask(match[2], match[1]);
@@ -70,11 +98,14 @@ bot.command("newtask", async (ctx) => {
 
 bot.command("tasks", async (ctx) => {
   const tasks = getRecurringTasks();
-  if (tasks.length === 0) { await ctx.reply("Ei tehtäviä. Lisää: /newtask"); return; }
+  if (tasks.length === 0) {
+    await ctx.reply("Ei tehtäviä. Lisää: /newtask");
+    return;
+  }
   const lines = tasks.map((t) => {
     const next = formatDate(getNextDate(t));
     const done = t.last_done || "—";
-    return `*${t.id}.* ${t.name}\n   ↻ ${t.interval} | edellinen: ${done} | seuraava: ${next}`;
+    return `*${t.id}.* ${t.name}\n      ↻ ${t.interval} | edellinen: ${done} | seuraava: ${next}`;
   });
   const buttons = tasks.map((t) => [
     Markup.button.callback(`✅`, `taskdone:${t.id}`),
@@ -90,7 +121,9 @@ bot.command("edittask", async (ctx) => {
   const args = ctx.message.text.replace(/^\/edittask(@\w+)?\s*/, "").trim();
   const match = /^(\d+)\s+(\d+(?:pv|vk|kk|v))\s+(.+)$/.exec(args);
   if (!match) {
-    await ctx.reply("Käyttö: /edittask <id> <intervalli> <nimi>\nEsim: /edittask 3 1kk Ikkunoiden pesu");
+    await ctx.reply(
+      "Käyttö: /edittask <id> <intervalli> <nimi>\nEsim: /edittask 3 1kk Ikkunoiden pesu",
+    );
     return;
   }
   try {
@@ -106,7 +139,10 @@ bot.command("edittask", async (ctx) => {
 bot.command("done", async (ctx) => {
   const idStr = ctx.message.text.replace(/^\/done(@\w+)?\s*/, "").trim();
   const id = Number(idStr);
-  if (!id) { await ctx.reply("Käyttö: /done <id>"); return; }
+  if (!id) {
+    await ctx.reply("Käyttö: /done <id>");
+    return;
+  }
   markTaskDone(id, today());
   await ctx.reply("✅ Merkitty tehdyksi!");
 });
@@ -125,7 +161,13 @@ bot.action(/^taskdel:(\d+)$/, async (ctx) => {
 
 const broadcastMessage = async (msg: string): Promise<void> => {
   const activeChats = await getActiveChats();
-  await Promise.all(activeChats.map((c) => bot.telegram.sendMessage(c.id, msg)));
+  for (const chat of activeChats) {
+    try {
+      await bot.telegram.sendMessage(chat.id, msg);
+    } catch (err) {
+      console.error("[broadcastMessage] Failed to send message:", err);
+    }
+  }
 };
 
 export { bot, broadcastMessage };
