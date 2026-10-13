@@ -18,6 +18,11 @@ if (!tgBotToken) {
 }
 
 const tz = process.env.TZ || "Europe/Helsinki";
+try {
+  new Intl.DateTimeFormat("en", { timeZone: tz }).format();
+} catch {
+  throw new ConfigError(`Invalid time zone: ${tz}`);
+}
 
 const sqlitePath =
   process.env.SQLITE_PATH || path.join(process.cwd(), "data", "hommabot.db");

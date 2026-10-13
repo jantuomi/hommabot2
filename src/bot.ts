@@ -1,51 +1,63 @@
-import { bot, broadcastMessage } from "./tg";
-import { getRecurringTasks, markTaskDone } from "./db";
-import { isThisWeek, today, now } from "./tasks";
-import { isMonday, getHours, format } from "date-fns";
+import config from "./config";
+import { store } from "./db";
+import { bot } from "./tg";
+import { createReminderRunner } from "./reminders";
 
-const CHECK_INTERVAL_MS = 60 * 1000;
-let lastRunKey: string | null = null;
+const runReminders = createReminderRunner(
+  store,
+  async (chatId, screen) => {
+    const sent = await bot.telegram.sendMessage(
+      chatId,
+      screen.text,
+      screen.keyboard,
+    );
+    return sent.message_id;
+  },
+  config.tz,
+);
 
-const runWeeklyTasks = async (): Promise<void> => {
-  try {
-    console.log("[weekly] Starting recurring tasks check");
-    const tasks = getRecurringTasks();
-    const dueTasks = tasks.filter(isThisWeek);
-
-    if (dueTasks.length > 0) {
-      const taskText = dueTasks
-        .map((t) => `• ${t.name} (${t.interval})`)
-        .join("\n");
-      await broadcastMessage(`📋 Tällä viikolla tehtävät hommat:\n${taskText}`);
-      const todayStr = today();
-      for (const t of dueTasks) {
-        markTaskDone(t.id, todayStr);
-      }
-    } else {
-      await broadcastMessage("Tällä viikolla ei toistuvia hommia! 🎉");
-    }
-    console.log("[weekly] Done");
-  } catch (err) {
-    console.error("[weekly] Error:", err);
-  }
+let timer: ReturnType<typeof setInterval> | undefined;
+const checkReminders = () => {
+  runReminders().catch((error) =>
+    console.error("[reminders] Check failed:", error),
+  );
 };
 
-const checkAndRun = async (): Promise<void> => {
-  const current = now();
-  if (isMonday(current) && getHours(current) === 9) {
-    const key = format(current, "yyyy-MM-dd");
-    if (key !== lastRunKey) {
-      lastRunKey = key;
-      await runWeeklyTasks();
-    }
-  }
+const start = async () => {
+  await bot.telegram.setMyCommands([
+    { command: "start", description: "Valikko ja viikkomuistutukset päälle" },
+    { command: "list", description: "Ostoslista" },
+    { command: "add", description: "Lisää ostoksia" },
+    { command: "tasks", description: "Tämän viikon ja myöhässä olevat hommat" },
+    {
+      command: "week",
+      description: "Näytä viikon ja tekemättömät hommat uudelleen",
+    },
+    {
+      command: "done",
+      description: "Lopeta ostosten lisäys / merkitse homma tehdyksi",
+    },
+    { command: "newtask", description: "Lisää uusi homma" },
+    { command: "cancel", description: "Lopeta nykyinen syöttövaihe" },
+    { command: "help", description: "Käyttöohjeet" },
+    { command: "stop", description: "Viikkomuistutukset pois" },
+  ]);
+  await bot.launch({}, () => {
+    console.log("[bot] Running; weekly reminders Monday 09:00:", config.tz);
+    timer = setInterval(checkReminders, 60 * 1000);
+    checkReminders();
+  });
 };
 
-setInterval(checkAndRun, CHECK_INTERVAL_MS);
-console.log("[bot] Scheduled weekly tasks for Monday 09:00");
+for (const signal of ["SIGINT", "SIGTERM"] as const) {
+  process.once(signal, () => {
+    if (timer) clearInterval(timer);
+    bot.stop(signal);
+  });
+}
 
-bot.launch();
-console.log("[bot] Bot is running");
-
-process.once("SIGINT", () => bot.stop("SIGINT"));
-process.once("SIGTERM", () => bot.stop("SIGTERM"));
+start().catch((error) => {
+  console.error("[bot] Startup failed:", error);
+  if (timer) clearInterval(timer);
+  process.exitCode = 1;
+});
