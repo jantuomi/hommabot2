@@ -1,6 +1,6 @@
 {
   "name": "hommabot2",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "description": "",
   "main": "src/bot.ts",
   "scripts": {
@@ -12,6 +12,10 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
+  "allowScripts": {
+    "better-sqlite3@12.9.0": true,
+    "esbuild@0.27.7": true
+  },
   "dependencies": {
     "better-sqlite3": "12.9.0",
     "date-fns": "4.1.0",
