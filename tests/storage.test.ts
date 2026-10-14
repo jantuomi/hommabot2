@@ -488,3 +488,108 @@ test("screens fit Telegram limits and long shopping names open details before mu
     }
   }
 });
+
+test("shopping item rows are neutral while grouped controls and pagination use native primary styling", (t) => {
+  const store = new HouseholdStore(":memory:", "2026-10-13");
+  t.after(() => store.close());
+  const items = store.addItems(
+    Array.from({ length: 8 }, (_, i) => `Tuote ${i}`),
+    actor,
+  ).added;
+  store.addTask("Homma", "1vk", "2026-10-13", actor);
+  for (const tab of ["active", "bought", "removed"] as const) {
+    if (tab === "bought") store.changeItem(items[0].id, 0, "buy", actor);
+    if (tab === "removed") store.changeItem(items[0].id, 1, "remove", actor);
+    for (const edit of [false, true]) {
+      const screen = renderView(
+        store,
+        { kind: "shopping", tab, page: 0, edit },
+        "2026-10-13",
+      );
+      const rows = screen.keyboard.reply_markup.inline_keyboard;
+      for (const button of rows.flat()) {
+        assert.ok("callback_data" in button);
+        if (!("callback_data" in button))
+          throw new Error("Expected callback button");
+        const isItem = /^(si:|item:)/.test(button.callback_data);
+        if (isItem) assert.ok(!("style" in button));
+        else {
+          assert.ok("style" in button);
+          assert.equal(button.style, "primary");
+        }
+      }
+      const addRow = rows.find((row) =>
+        row.some(
+          (button) =>
+            "callback_data" in button && button.callback_data === "capture",
+        ),
+      )!;
+      assert.equal(addRow.length, 2);
+      assert.ok(
+        JSON.stringify(screen.keyboard.reply_markup).includes(
+          '"style":"primary"',
+        ),
+      );
+    }
+  }
+  const itemCard = renderView(
+    store,
+    { kind: "item", id: items[0].id },
+    "2026-10-13",
+  );
+  assert.ok(
+    itemCard.keyboard.reply_markup.inline_keyboard
+      .flat()
+      .every((button) => "style" in button && button.style === "primary"),
+  );
+  const tasks = renderView(
+    store,
+    { kind: "tasks", tab: "due", page: 0 },
+    "2026-10-13",
+  );
+  for (const button of tasks.keyboard.reply_markup.inline_keyboard.flat()) {
+    assert.ok("callback_data" in button);
+    if (!("callback_data" in button))
+      throw new Error("Expected callback button");
+    if (button.callback_data.startsWith("task:"))
+      assert.ok(!("style" in button));
+    else assert.ok("style" in button && button.style === "primary");
+  }
+});
+
+test("shopping footer undo follows the latest shopping event, ignores task events and never offers redo", (t) => {
+  const store = new HouseholdStore(":memory:", "2026-10-13");
+  t.after(() => store.close());
+  const item = store.addItems(["Maito"], actor).added[0];
+  const bought = changed(store.changeItem(item.id, 0, "buy", spouse));
+  store.addTask("Homma", "1vk", "2026-10-13", actor);
+  assert.equal(store.latestEvent("shopping")?.id, bought);
+  assert.equal(store.latestEvent("shopping", item.id)?.id, bought);
+  const callbacks = () =>
+    renderView(
+      store,
+      {
+        kind: "shopping",
+        tab: "active",
+        page: 0,
+        edit: false,
+      },
+      "2026-10-13",
+    )
+      .keyboard.reply_markup.inline_keyboard.flat()
+      .filter(
+        (button) =>
+          "callback_data" in button && button.callback_data.startsWith("undo:"),
+      );
+  const beforeUndo = callbacks();
+  assert.equal(beforeUndo.length, 1);
+  const undoButton = beforeUndo[0];
+  assert.ok(
+    "callback_data" in undoButton &&
+      undoButton.callback_data === `undo:${bought}`,
+  );
+  changed(store.undo(bought, actor));
+  assert.equal(callbacks().length, 0);
+  assert.equal(store.latestEvent("shopping")?.action, "undo");
+  assert.equal(store.latestEvent("shopping", 999), undefined);
+});

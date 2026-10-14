@@ -380,8 +380,10 @@ test("buy updates both spouses' active views and undo restores the item; double 
   await h.text("/list", 20);
   const views = h.store.views().filter((view) => view.view.kind === "shopping");
   assert.equal(views.length, 2);
+  const ownBoardId = views.find((view) => view.chatId === 10)!.messageId;
+  const spouseBoardId = views.find((view) => view.chatId === 20)!.messageId;
   const item = h.store.items()[0];
-  await h.tap(`si:buy:${item.id}:0`, views[0].messageId);
+  await h.tap(`si:buy:${item.id}:0`, ownBoardId);
   assert.equal(h.store.items("bought").length, 1);
   const updated = h.calls.filter(
     (call) =>
@@ -393,12 +395,176 @@ test("buy updates both spouses' active views and undo restores the item; double 
     new Set([10, 20]),
   );
   const event = h.store.history("shopping", item.id)[0];
-  await h.tap(`si:buy:${item.id}:0`, views[0].messageId, 20);
+  const beforeStaleTap = h.sent().length;
+  await h.tap(`si:buy:${item.id}:0`, spouseBoardId, 20);
   assert.equal(h.store.items("bought").length, 1);
-  assert.ok(h.lastText().includes("jo muutettu"));
-  await h.tap(`undo:${event.id}`, h.sent().at(-1)!.messageId!);
+  assert.equal(h.sent().length, beforeStaleTap);
+  const alert = h.calls
+    .filter((call) => call.method === "answerCallbackQuery")
+    .at(-1)!;
+  assert.ok(String(alert.payload.text).includes("jo muutettu"));
+  assert.equal(alert.payload.show_alert, true);
+  await h.tap(`undo:${event.id}`, ownBoardId);
   assert.equal(h.store.items("active").length, 1);
   assert.equal(h.log.mock.callCount(), 0);
+});
+
+test("shopping buy, restore, remove, undo and rename update existing views without success messages", async (t) => {
+  const h = harness(t);
+  await h.text("/add mysli");
+  await h.text("/done");
+  const item = h.store.items()[0];
+  const boardId = h.sent().at(-1)!.messageId!;
+  const sentBefore = h.sent().length;
+  const editedButtons = () => {
+    const edit = h.calls
+      .filter(
+        (call) =>
+          call.method === "editMessageText" &&
+          call.payload.message_id === boardId,
+      )
+      .at(-1)!;
+    return (
+      edit.payload.reply_markup as {
+        inline_keyboard: {
+          text: string;
+          callback_data: string;
+          style?: string;
+        }[][];
+      }
+    ).inline_keyboard.flat();
+  };
+  const tapMutation = async (data: string) => {
+    const before = h.calls.length;
+    await h.tap(data, boardId);
+    assert.equal(h.sent().length, sentBefore);
+    const answers = h.calls
+      .slice(before)
+      .filter((call) => call.method === "answerCallbackQuery");
+    assert.equal(answers.length, 1);
+    assert.equal(answers[0].payload.show_alert, false);
+    assert.ok(String(answers[0].payload.text).length <= 200);
+  };
+
+  await tapMutation(`si:buy:${item.id}:0`);
+  assert.equal(h.store.item(item.id)?.status, "bought");
+  assert.ok(
+    editedButtons().some((button) => button.callback_data.startsWith("undo:")),
+  );
+  await h.tap("sh:bought:0:0", boardId);
+  const restore = editedButtons().find((button) =>
+    button.callback_data.startsWith("si:restore:"),
+  )!;
+  await tapMutation(restore.callback_data);
+  assert.equal(h.store.item(item.id)?.status, "active");
+  await h.tap(`item:${item.id}`, boardId);
+  await tapMutation(`si:remove:${item.id}:2`);
+  assert.equal(h.store.item(item.id)?.status, "removed");
+  const undo = editedButtons().find((button) =>
+    button.callback_data.startsWith("undo:"),
+  )!;
+  assert.equal(undo.style, "primary");
+  await tapMutation(undo.callback_data);
+  assert.equal(h.store.item(item.id)?.status, "active");
+  assert.ok(
+    !editedButtons().some((button) => button.callback_data.startsWith("undo:")),
+  );
+
+  await h.tap(`rename:${item.id}:4`, boardId);
+  const renamePromptCount = h.sent().length;
+  const renamePromptId = h.session().promptId;
+  await h.text("mysli & pähkinät");
+  assert.equal(h.store.item(item.id)?.item, "mysli & pähkinät");
+  assert.equal(h.sent().length, renamePromptCount);
+  assert.ok(
+    h.calls.some(
+      (call) =>
+        call.method === "editMessageText" &&
+        call.payload.message_id === renamePromptId &&
+        String(call.payload.text).includes("mysli & pähkinät"),
+    ),
+  );
+  assert.ok(
+    editedButtons().some((button) => button.callback_data.startsWith("undo:")),
+  );
+  assert.equal(h.store.session(10, 10), undefined);
+  assert.equal(h.log.mock.callCount(), 0);
+});
+
+test("shopping actions on older untracked messages show current details and undo without new messages", async (t) => {
+  const h = harness(t);
+  await h.text("/add Maito");
+  await h.text("/done");
+  const item = h.store.items()[0];
+  const oldBoardId = h.sent().at(-1)!.messageId!;
+  for (let index = 0; index < 7; index++) await h.text("/list");
+  assert.ok(!h.store.views().some((view) => view.messageId === oldBoardId));
+  const before = h.sent().length;
+  await h.tap(`si:buy:${item.id}:0`, oldBoardId);
+  assert.equal(h.store.item(item.id)?.status, "bought");
+  assert.equal(h.sent().length, before);
+  const edit = h.calls
+    .filter(
+      (call) =>
+        call.method === "editMessageText" &&
+        call.payload.message_id === oldBoardId,
+    )
+    .at(-1)!;
+  assert.ok(String(edit.payload.text).includes("Maito\nTila: ostettu"));
+  const buttons = (
+    edit.payload.reply_markup as {
+      inline_keyboard: { callback_data: string }[][];
+    }
+  ).inline_keyboard.flat();
+  const undo = buttons.find((button) =>
+    button.callback_data.startsWith("undo:"),
+  )!;
+  await h.tap(undo.callback_data, oldBoardId);
+  assert.equal(h.store.item(item.id)?.status, "active");
+  assert.equal(h.sent().length, before);
+  const lastEdit = h.calls
+    .filter(
+      (call) =>
+        call.method === "editMessageText" &&
+        call.payload.message_id === oldBoardId,
+    )
+    .at(-1)!;
+  assert.ok(String(lastEdit.payload.text).includes("Maito\nTila: ostamatta"));
+  assert.equal(h.log.mock.callCount(), 0);
+});
+
+for (const untracked of [false, true]) {
+  test(`quiet shopping actions report refresh failures on ${untracked ? "untracked" : "tracked"} messages and keep the saved change`, async (t) => {
+    const h = harness(t);
+    await h.text("/add Maito");
+    await h.text("/done");
+    const item = h.store.items()[0];
+    const boardId = h.sent().at(-1)!.messageId!;
+    if (untracked) {
+      for (let index = 0; index < 7; index++) await h.text("/list");
+    }
+    const before = h.sent().length;
+    h.failEdits();
+    await h.tap(`si:buy:${item.id}:0`, boardId);
+    assert.equal(h.store.item(item.id)?.status, "bought");
+    assert.equal(h.sent().length, before + 1);
+    assert.ok(h.lastText().includes("Muutos tallennettiin"));
+    assert.ok(h.lastText().includes("ei voitu päivittää"));
+    assert.ok(h.log.mock.callCount() > 0);
+  });
+}
+
+test("missing shopping items produce an alert without a success-shaped chat reply", async (t) => {
+  const h = harness(t);
+  await h.text("/list");
+  const before = h.sent().length;
+  await h.tap("si:buy:999:0", h.sent().at(-1)!.messageId!);
+  assert.equal(h.sent().length, before);
+  const answer = h.calls
+    .filter((call) => call.method === "answerCallbackQuery")
+    .at(-1)!;
+  assert.equal(answer.payload.show_alert, true);
+  assert.ok(String(answer.payload.text).includes("ei löydy"));
 });
 
 test("remove is recoverable and task completion refreshes its named card", async (t) => {

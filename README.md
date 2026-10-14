@@ -9,10 +9,12 @@ Send `/start` to open the persistent menu and enable weekly reminders in that co
 ### Shopping
 
 - **Ostoslista** shows named item buttons. Tap an item to mark it **bought**, not delete it.
+- Item rows keep neutral styling. Navigation/actions use blue **primary** buttons, grouped in a footer below the items; **Lisää tuotteita** shares a control row with **Päivitä** rather than resembling another product. Button colors require a current Telegram client; the grouped layout and control icons remain useful on older clients.
 - Long item names open details before an action, so a truncated button cannot lead to checking off the wrong item.
 - **Ostetut** lets you return purchases to the active list.
 - **Muokkaa / historia** opens item details for renaming, recoverable removal and history.
 - **Poistetut** restores removed items to their previous state (active or bought).
+- Buying, restoring, removing and undoing items update the existing views with only a brief callback toast—no new success messages in the chat. Renaming updates the item card and turns the input prompt into current item details. The footer and item details offer **Kumoa** for the latest applicable change, while history retains per-item recovery. Stale/missing actions produce an alert, and failed refreshes still report explicitly that the saved state needs refreshing.
 - **Ostoksia** or `/add` starts **add mode**. Your subsequent text messages in that chat are split by newline and added as items without repeating `/add`. Commas remain part of the item name. `/done` ends add mode.
 - Duplicate active names are matched case-insensitively. The bot reports duplicates and offers **Lisää päällekkäisetkin**; it never silently merges quantities.
 - Each message accepts up to 30 items, with names of 1–200 characters. Quantities are ordinary text, e.g. `Maito 2 l`.
@@ -39,7 +41,7 @@ Intervals: `pv` = days, `vk` = weeks, `kk` = months, `v` = years; use a count fr
 
 Changes are committed before success is reported. Shopping items and tasks are never hard-deleted by the interface. Undo restores the preceding state, including completion and snooze dates, but is refused if the entity has changed since that event. Old and repeated button taps cannot toggle an item back or advance another task occurrence. Either permitted user can restore or undo household changes.
 
-The six newest tracked views in each chat refresh after household mutations, including views in the other user's chat. Older messages have refresh/navigation buttons and revision-checked actions. If a message can no longer be edited, navigation opens a replacement. Failed refreshes are logged and reported without claiming the saved change was lost.
+The six newest tracked views in each chat refresh after household mutations, including views in the other user's chat. Older messages have refresh/navigation buttons and revision-checked actions; shopping actions on an untracked message open current item details in that same message. If a message can no longer be edited, a replacement opens. Failed refreshes are logged and reported without claiming the saved change was lost.
 
 Input sessions are per user and per chat, survive restarts, and expire after 30 minutes of inactivity. Invalid input re-prompts; starting another input flow replaces the previous one. Task creation/editing in groups accepts only replies to the latest prompt. Opening `/list`, `/tasks`, `/week` or the corresponding menu entries ends the current input session to avoid accidentally capturing later messages.
 

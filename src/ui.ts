@@ -2,6 +2,7 @@ import { Markup } from "telegraf";
 import { differenceInCalendarDays, parseISO } from "date-fns";
 import type {
   HouseholdStore,
+  HistoryEvent,
   RecurringTask,
   ShoppingItem,
   View,
@@ -17,6 +18,22 @@ const PAGE_SIZE = 6;
 const button = (text: string, data: string) =>
   Markup.button.callback(text, data);
 type Button = ReturnType<typeof button>;
+// Bot API 9.4 supports button styles; Telegraf's bundled types predate that field.
+const control = (
+  text: string,
+  data: string,
+): Button & { style: "primary" } => ({
+  ...button(text, data),
+  style: "primary",
+});
+const canUndo = (
+  event: HistoryEvent | undefined,
+  revision: number | undefined,
+): event is HistoryEvent =>
+  !!event &&
+  !event.undone &&
+  event.action !== "undo" &&
+  event.after_revision === revision;
 export interface Screen {
   text: string;
   keyboard: ReturnType<typeof Markup.inlineKeyboard>;
@@ -81,9 +98,9 @@ const pager = (
   pages > 1
     ? [
         [
-          button("‹", callback(Math.max(0, page - 1))),
-          button(`${page + 1}/${pages}`, callback(page)),
-          button("›", callback(Math.min(pages - 1, page + 1))),
+          control("‹", callback(Math.max(0, page - 1))),
+          control(`${page + 1}/${pages}`, callback(page)),
+          control("›", callback(Math.min(pages - 1, page + 1))),
         ],
       ]
     : [];
@@ -139,19 +156,29 @@ export const renderView = (
     rows.push(
       ...pager(page, pages, (p) => `sh:${view.tab}:${p}:${Number(view.edit)}`),
     );
-    rows.push([button("➕ Lisää tuotteita", "capture")]);
     rows.push([
-      button(`Ostamatta (${store.items("active").length})`, "sh:active:0:0"),
-      button(`Ostetut (${store.items("bought").length})`, "sh:bought:0:0"),
-      button(`Poistetut (${store.items("removed").length})`, "sh:removed:0:0"),
+      control("➕ Lisää tuotteita", "capture"),
+      control("↻ Päivitä", `sh:${view.tab}:${page}:${Number(view.edit)}`),
     ]);
     rows.push([
-      button(
-        view.edit ? "Valmis" : "Muokkaa / historia",
+      control(`Ostamatta (${store.items("active").length})`, "sh:active:0:0"),
+      control(`Ostetut (${store.items("bought").length})`, "sh:bought:0:0"),
+      control(`Poistetut (${store.items("removed").length})`, "sh:removed:0:0"),
+    ]);
+    const footer = [
+      control(
+        view.edit ? "↩️ Takaisin" : "⚙️ Muokkaa",
         `sh:${view.tab}:${page}:${Number(!view.edit)}`,
       ),
-      button("Päivitä", `sh:${view.tab}:${page}:${Number(view.edit)}`),
-    ]);
+    ];
+    const latest = store.latestEvent("shopping");
+    const changedItem = latest ? store.item(latest.entity_id) : undefined;
+    if (canUndo(latest, changedItem?.revision) && changedItem) {
+      footer.push(
+        control(`↩️ Kumoa: ${short(changedItem.item)}`, `undo:${latest.id}`),
+      );
+    }
+    rows.push(footer);
   } else if (view.kind === "tasks") {
     let tasks = store
       .tasks(true)
@@ -192,13 +219,13 @@ export const renderView = (
       ]);
     }
     rows.push(...pager(page, pages, (p) => `tl:${view.tab}:${p}`));
-    rows.push([button("➕ Uusi homma", "newtask")]);
+    rows.push([control("➕ Uusi homma", "newtask")]);
     rows.push([
-      button("Viikon hommat", "tl:due:0"),
-      button("Kaikki", "tl:all:0"),
-      button("Arkisto", "tl:archived:0"),
+      control("Viikon hommat", "tl:due:0"),
+      control("Kaikki", "tl:all:0"),
+      control("Arkisto", "tl:archived:0"),
     ]);
-    rows.push([button("Päivitä", `tl:${view.tab}:${page}`)]);
+    rows.push([control("Päivitä", `tl:${view.tab}:${page}`)]);
   } else if (view.kind === "item") {
     const item = store.item(view.id);
     if (!item) return missing("Tuotetta ei löydy.", "sh:active:0:0");
@@ -209,27 +236,31 @@ export const renderView = (
     };
     text = `${displayName(item.item)}\nTila: ${status[item.status]}`;
     if (item.status === "active") {
-      rows.push([button("✅ Ostettu", `si:buy:${item.id}:${item.revision}`)]);
+      rows.push([control("✅ Ostettu", `si:buy:${item.id}:${item.revision}`)]);
     } else {
       rows.push([
-        button("↩️ Palauta", `si:restore:${item.id}:${item.revision}`),
+        control("↩️ Palauta", `si:restore:${item.id}:${item.revision}`),
       ]);
     }
     rows.push([
-      button("Nimeä uudelleen", `rename:${item.id}:${item.revision}`),
+      control("Nimeä uudelleen", `rename:${item.id}:${item.revision}`),
     ]);
     if (item.status !== "removed") {
       rows.push([
-        button(
+        control(
           "Poista (palautettavissa)",
           `si:remove:${item.id}:${item.revision}`,
         ),
       ]);
     }
     rows.push([
-      button("Historia", `hi:shopping:${item.id}:0`),
-      button("Takaisin", `sh:${item.status}:0:0`),
+      control("Historia", `hi:shopping:${item.id}:0`),
+      control("Takaisin", `sh:${item.status}:0:0`),
     ]);
+    const latest = store.latestEvent("shopping", item.id);
+    if (canUndo(latest, item.revision)) {
+      rows.push([control("↩️ Kumoa viimeisin muutos", `undo:${latest.id}`)]);
+    }
   } else if (view.kind === "task") {
     const task = store.task(view.id);
     if (!task) return missing("Hommaa ei löydy.", "tl:due:0");
@@ -246,16 +277,16 @@ export const renderView = (
     }
     if (task.archived_at) {
       rows.push([
-        button("Palauta homma", `ta:restore:${task.id}:${task.revision}`),
+        control("Palauta homma", `ta:restore:${task.id}:${task.revision}`),
       ]);
     } else {
       if (!problem && task.last_done !== date) {
         const buttons = [
-          button("✅ Tehty tänään", `ta:done:${task.id}:${task.revision}`),
+          control("✅ Tehty tänään", `ta:done:${task.id}:${task.revision}`),
         ];
         if (dueThisWeek(task, date)) {
           buttons.push(
-            button(
+            control(
               "💤 Siirrä muistutusta",
               `snooze:${task.id}:${task.revision}`,
             ),
@@ -266,22 +297,17 @@ export const renderView = (
         text += "\n✅ Tehty tänään";
       }
       rows.push([
-        button("Muokkaa", `edit:${task.id}:${task.revision}`),
-        button("Arkistoi", `archive:${task.id}:${task.revision}`),
+        control("Muokkaa", `edit:${task.id}:${task.revision}`),
+        control("Arkistoi", `archive:${task.id}:${task.revision}`),
       ]);
     }
-    const latest = store.history("task", task.id)[0];
-    if (
-      latest &&
-      !latest.undone &&
-      latest.action !== "undo" &&
-      latest.after_revision === task.revision
-    ) {
-      rows.push([button("Kumoa viimeisin merkintä", `undo:${latest.id}`)]);
+    const latest = store.latestEvent("task", task.id);
+    if (canUndo(latest, task.revision)) {
+      rows.push([control("Kumoa viimeisin merkintä", `undo:${latest.id}`)]);
     }
     rows.push([
-      button("Historia", `hi:task:${task.id}:0`),
-      button("Takaisin hommiin", "tl:due:0"),
+      control("Historia", `hi:task:${task.id}:0`),
+      control("Takaisin hommiin", "tl:due:0"),
     ]);
   } else {
     const entity =
@@ -313,19 +339,15 @@ export const renderView = (
         text += `\nEnnen: ${displayName(before.item ?? "", 160)}`;
       if (event.action === "done" && before)
         text += `\nEdellinen valmistuminen: ${displayName(before.last_done ?? "ei kirjattu", 32)}`;
-      if (
-        !event.undone &&
-        event.action !== "undo" &&
-        event.after_revision === entity.revision
-      ) {
-        rows.push([button(`Kumoa #${event.id}`, `undo:${event.id}`)]);
+      if (canUndo(event, entity.revision)) {
+        rows.push([control(`Kumoa #${event.id}`, `undo:${event.id}`)]);
       }
     }
     rows.push(
       ...pager(page, pages, (p) => `hi:${view.entity}:${view.id}:${p}`),
     );
     rows.push([
-      button(
+      control(
         "Takaisin",
         `${view.entity === "task" ? "task" : "item"}:${view.id}`,
       ),
@@ -336,5 +358,5 @@ export const renderView = (
 
 const missing = (text: string, callback: string): Screen => ({
   text,
-  keyboard: Markup.inlineKeyboard([[button("Takaisin", callback)]]),
+  keyboard: Markup.inlineKeyboard([[control("Takaisin", callback)]]),
 });

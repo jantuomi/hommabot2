@@ -24,6 +24,12 @@ const SESSION_MS = 30 * 60 * 1000;
 const callback = Markup.button.callback;
 const escapeHtml = (text: string) =>
   text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+const mutationFailure = (kind: Exclude<Mutation["kind"], "changed">): string =>
+  kind === "missing"
+    ? "Kohdetta ei löydy. Avaa lista uudelleen."
+    : kind === "stale"
+      ? "Kohdetta on jo muutettu. Päivitä näkymä; vanhaa toimintoa ei tehty."
+      : "Kohde on jo tässä tilassa. Uutta muutosta ei tehty.";
 const unavailableView = (error: unknown): error is TelegramError =>
   error instanceof TelegramError &&
   (error.code === 403 ||
@@ -97,18 +103,28 @@ export const createHouseholdBot = (
     }
   });
 
-  const show = async (ctx: Context, view: View, edit = false) => {
+  const show = async (
+    ctx: Context,
+    view: View,
+    edit = false,
+    targetMessageId?: number,
+  ) => {
     const screen = renderView(store, view, day());
     const { chatId } = ids(ctx);
-    if (
-      edit &&
-      ctx.callbackQuery &&
-      "message" in ctx.callbackQuery &&
-      ctx.callbackQuery.message
-    ) {
-      const messageId = ctx.callbackQuery.message.message_id;
+    const messageId =
+      targetMessageId ??
+      (ctx.callbackQuery && "message" in ctx.callbackQuery
+        ? ctx.callbackQuery.message?.message_id
+        : undefined);
+    if (edit && messageId !== undefined) {
       try {
-        await ctx.editMessageText(screen.text, screen.keyboard);
+        await ctx.telegram.editMessageText(
+          chatId,
+          messageId,
+          undefined,
+          screen.text,
+          screen.keyboard,
+        );
       } catch (error) {
         if (unavailableView(error)) {
           store.forgetView(chatId, messageId);
@@ -196,13 +212,62 @@ export const createHouseholdBot = (
         keyboard,
       );
     } else {
-      const text =
-        result.kind === "missing"
-          ? "Kohdetta ei löydy. Avaa lista uudelleen."
-          : result.kind === "stale"
-            ? "Kohdetta on jo muutettu. Päivitä näkymä; vanhaa toimintoa ei tehty."
-            : "Kohde on jo tässä tilassa. Uutta muutosta ei tehty.";
-      await ctx.reply(text);
+      await ctx.reply(mutationFailure(result.kind));
+    }
+  };
+
+  const shoppingFeedback = async (
+    ctx: Context,
+    result: Mutation,
+    text: string,
+    id: number,
+    promptId?: number,
+  ) => {
+    if (ctx.callbackQuery) {
+      await ctx.answerCbQuery(
+        result.kind === "changed" ? text : mutationFailure(result.kind),
+        { show_alert: result.kind === "missing" || result.kind === "stale" },
+      );
+    } else if (result.kind !== "changed") {
+      await ctx.reply(mutationFailure(result.kind));
+    }
+    const messageId =
+      promptId ??
+      (ctx.callbackQuery && "message" in ctx.callbackQuery
+        ? ctx.callbackQuery.message?.message_id
+        : undefined);
+    let sourceRefreshFailed = false;
+    if (messageId !== undefined) {
+      const { chatId } = ids(ctx);
+      const view = store
+        .views()
+        .find(
+          (tracked) =>
+            tracked.chatId === chatId && tracked.messageId === messageId,
+        )?.view;
+      const showsItem =
+        view?.kind === "shopping" ||
+        (view?.kind === "item" && view.id === id) ||
+        (view?.kind === "history" &&
+          view.entity === "shopping" &&
+          view.id === id);
+      if (!showsItem) {
+        try {
+          await show(ctx, { kind: "item", id }, true, messageId);
+        } catch (error) {
+          if (!(error instanceof TelegramError)) throw error;
+          console.error("[views] Refresh failed:", chatId, messageId, error);
+          sourceRefreshFailed = true;
+        }
+      }
+    }
+    const updated = await refreshViews();
+    if (!updated || sourceRefreshFailed) {
+      await ctx.reply(
+        result.kind === "changed"
+          ? "Muutos tallennettiin, mutta kaikkia näkymiä ei voitu päivittää. Käytä Päivitä-painiketta."
+          : "Kaikkia näkymiä ei voitu päivittää. Avaa /list uudelleen.",
+      );
     }
   };
 
@@ -658,7 +723,6 @@ export const createHouseholdBot = (
     );
   });
   bot.action(/^si:(buy|restore|remove):(\d+):(\d+)$/, async (ctx) => {
-    await ctx.answerCbQuery();
     const id = Number(ctx.match[2]);
     const item = store.item(id);
     const action = ctx.match[1] as "buy" | "restore" | "remove";
@@ -674,10 +738,11 @@ export const createHouseholdBot = (
         : action === "remove"
           ? "poistettu (palautettavissa)"
           : "palautettu";
-    await feedback(
+    await shoppingFeedback(
       ctx,
       result,
-      `${displayName(item?.item ?? "Tuote")} ${label}.`,
+      `${displayName(item?.item ?? "Tuote", 80)} ${label}.`,
+      id,
     );
   });
   bot.action(/^rename:(\d+):(\d+)$/, async (ctx) => {
@@ -685,6 +750,7 @@ export const createHouseholdBot = (
     const item = store.item(Number(ctx.match[1]));
     if (!item || item.revision !== Number(ctx.match[2]))
       return ctx.reply("Tuotetta on muutettu. Päivitä näkymä.");
+    await show(ctx, { kind: "item", id: item.id }, true);
     await prompt(
       ctx,
       { kind: "shopping-rename", id: item.id, revision: item.revision },
@@ -769,7 +835,6 @@ export const createHouseholdBot = (
     );
   });
   bot.action(/^undo:(\d+)$/, async (ctx) => {
-    await ctx.answerCbQuery();
     const event = store.event(Number(ctx.match[1]));
     const entity =
       event?.entity === "task"
@@ -778,9 +843,20 @@ export const createHouseholdBot = (
           ? store.item(event.entity_id)
           : undefined;
     const name = entity && ("name" in entity ? entity.name : entity.item);
+    const result = store.undo(Number(ctx.match[1]), actor(ctx), day());
+    if (event?.entity === "shopping") {
+      await shoppingFeedback(
+        ctx,
+        result,
+        `${displayName(name || "Tuote", 80)}: muutos kumottu.`,
+        event.entity_id,
+      );
+      return;
+    }
+    await ctx.answerCbQuery();
     await feedback(
       ctx,
-      store.undo(Number(ctx.match[1]), actor(ctx), day()),
+      result,
       `${displayName(name || "Kohde")}: viimeisin merkintä kumottu. Aikaisempi tila palautettiin.`,
     );
   });
@@ -926,7 +1002,13 @@ export const createHouseholdBot = (
           value,
         );
         store.clearSession(ctx.chat.id, ctx.from.id);
-        await feedback(ctx, result, `${value}: nimi tallennettu.`);
+        await shoppingFeedback(
+          ctx,
+          result,
+          `${displayName(value, 80)}: nimi tallennettu.`,
+          state.id,
+          session.promptId,
+        );
         break;
       }
       case "task-name":

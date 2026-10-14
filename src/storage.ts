@@ -533,6 +533,22 @@ export class HouseholdStore {
       .all(entity, id) as HistoryEvent[];
   }
 
+  latestEvent(entity: Entity, id?: number): HistoryEvent | undefined {
+    return (
+      id === undefined
+        ? this.db
+            .prepare(
+              "SELECT * FROM history WHERE entity = ? ORDER BY id DESC LIMIT 1",
+            )
+            .get(entity)
+        : this.db
+            .prepare(
+              "SELECT * FROM history WHERE entity = ? AND entity_id = ? ORDER BY id DESC LIMIT 1",
+            )
+            .get(entity, id)
+    ) as HistoryEvent | undefined;
+  }
+
   event(id: number): HistoryEvent | undefined {
     return this.db.prepare("SELECT * FROM history WHERE id = ?").get(id) as
       | HistoryEvent
