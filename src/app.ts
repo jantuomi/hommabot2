@@ -22,6 +22,8 @@ import { displayDate, displayName, homeKeyboard, renderView } from "./ui";
 
 const SESSION_MS = 30 * 60 * 1000;
 const callback = Markup.button.callback;
+const escapeHtml = (text: string) =>
+  text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 const unavailableView = (error: unknown): error is TelegramError =>
   error instanceof TelegramError &&
   (error.code === 403 ||
@@ -30,7 +32,7 @@ const help =
   "🛒 Ostoslista: napauta tuotetta merkitäksesi sen ostetuksi. Ostetut ja poistetut voi palauttaa.\n\n" +
   "➕ Ostoksia: käynnistä lisäystila ja lähetä tuotteita yksi per rivi, myös useassa viestissä. " +
   "Lopeta /done-komennolla, Valmis-painikkeella tai /cancel. Jo lisätyt tuotteet säilyvät. " +
-  "Ryhmässä vapaat viestit vaativat botille oikeuden lukea kaikki viestit; muuten vastaa lisäysviestiin.\n\n" +
+  "Ryhmässä botti avaa vastauksen lisäyspyyntöön automaattisesti, jotta viesti tulee perille myös yksityisyystilassa. Älä sulje vastausta ennen lähettämistä.\n\n" +
   "📅 Viikon hommat tai /week näyttää tämän viikon ja myöhässä olevat hommat uudelleen. " +
   "Tekemättömät hommat pysyvät näkyvissä, myös siirretyt muistutukset. Valitse homma, merkitse tehdyksi tai siirrä muistutusta. " +
   "Toisto lasketaan todellisesta valmistumisesta. Muistutus ei merkitse hommaa tehdyksi.\n\n" +
@@ -204,6 +206,31 @@ export const createHouseholdBot = (
     }
   };
 
+  const finishSession = async (ctx: Context, showShoppingList = true) => {
+    const { chatId, userId } = ids(ctx);
+    const state = store.session(chatId, userId)?.state;
+    store.clearSession(chatId, userId);
+    let text = "Syöttö lopetettu. Jo tallennetut muutokset säilyvät.";
+    if (state?.kind === "shopping-add") {
+      text = "🛒 Ostosten lisäystila lopetettu.";
+      text +=
+        state.addedCount === undefined
+          ? " Jo lisätyt tuotteet säilyvät."
+          : ` Lisätty ${state.addedCount} tuotetta.`;
+      if (state.receivedCount === 0) {
+        text += "\nEn vastaanottanut yhtään tuoteviestiä.";
+        if (ctx.chat?.type !== "private") {
+          text +=
+            "\nJos kirjoitit tuotteita, ne eivät tulleet botille asti. Aloita /add uudelleen ja lähetä tuotteet vastauksena botin lisäyspyyntöön.";
+        }
+      }
+    }
+    await ctx.reply(text, homeKeyboard);
+    if (state?.kind === "shopping-add" && showShoppingList) {
+      await show(ctx, shoppingView);
+    }
+  };
+
   const prompt = async (ctx: Context, state: SessionState, text: string) => {
     const { chatId, userId } = ids(ctx);
     const rows = [
@@ -240,12 +267,33 @@ export const createHouseholdBot = (
     if (state.kind === "task-confirm" || state.kind === "task-edit-confirm") {
       rows.unshift([callback("Tallenna", `session:confirm:${userId}`)]);
     }
-    const sent = await ctx.reply(text, Markup.inlineKeyboard(rows));
+    const groupShopping =
+      state.kind === "shopping-add" && ctx.chat?.type !== "private";
+    const sent = await ctx.reply(
+      groupShopping
+        ? "🛒 Lisäystilan painikkeet. Valmis lopettaa lisäyksen."
+        : text,
+      Markup.inlineKeyboard(rows),
+    );
     store.setSession(chatId, userId, {
       state,
       promptId: sent.message_id,
       expiresAt: clock().getTime() + SESSION_MS,
     });
+    if (groupShopping) {
+      // ForceReply and inline buttons need separate messages; callbacks use the controls' ID.
+      await ctx.reply(
+        `<a href="tg://user?id=${userId}">${escapeHtml(actor(ctx).name)}</a>\n${escapeHtml(text)}`,
+        {
+          parse_mode: "HTML",
+          reply_markup: {
+            force_reply: true,
+            selective: true,
+            input_field_placeholder: "Tuotteet yksi per rivi · /done lopettaa",
+          },
+        },
+      );
+    }
   };
 
   const currentSession = async (
@@ -295,10 +343,7 @@ export const createHouseholdBot = (
   const openBoard = async (ctx: Context, view: View) => {
     const { chatId, userId } = ids(ctx);
     if (store.session(chatId, userId)) {
-      store.clearSession(chatId, userId);
-      await ctx.reply(
-        "Aiempi syöttövaihe lopetettu. Jo tallennetut muutokset säilyvät.",
-      );
+      await finishSession(ctx, false);
     }
     await show(ctx, view);
   };
@@ -306,10 +351,10 @@ export const createHouseholdBot = (
     await show(ctx, shoppingView);
     await prompt(
       ctx,
-      { kind: "shopping-add" },
+      { kind: "shopping-add", addedCount: 0, receivedCount: 0 },
       "🛒 Ostosten lisäystila on päällä tässä keskustelussa vain sinulle.\n" +
         "Lähetä tuotteita yksi per rivi (enintään 30 kerralla, nimi enintään 200 merkkiä).\n" +
-        "Voit lähettää useita viestejä ilman /add-komentoa. Ryhmässä botin pitää voida lukea vapaat viestit; muuten vastaa lisäysviestiin.\n" +
+        "Voit lähettää useita viestejä ilman /add-komentoa. Ryhmässä lähetä tuotteet automaattisesti avattuun vastaukseen, jotta botti saa viestisi.\n" +
         "Esim:\nMaito 2 l\nKahvi\nOmenat\n\n/done, Valmis tai /cancel lopettaa; jo lisätyt tuotteet säilyvät.",
     );
   };
@@ -319,11 +364,41 @@ export const createHouseholdBot = (
     text: string,
     allowDuplicates = false,
   ) => {
+    const { chatId, userId } = ids(ctx);
+    const previous = store.session(chatId, userId);
+    const base: Extract<SessionState, { kind: "shopping-add" }> =
+      previous?.state.kind === "shopping-add" &&
+      previous.expiresAt > clock().getTime()
+        ? previous.state
+        : { kind: "shopping-add", addedCount: 0, receivedCount: 0 };
+    const state = {
+      ...base,
+      receivedCount:
+        base.receivedCount === undefined
+          ? undefined
+          : base.receivedCount + Number(ctx.updateType === "message"),
+    };
+    const persist = (next: typeof state) =>
+      store.setSession(chatId, userId, {
+        state: next,
+        promptId: 0,
+        expiresAt: clock().getTime() + SESSION_MS,
+      });
+    persist(state);
     const names = text
       .split(/\r?\n/)
       .map((name) => name.trim())
       .filter(Boolean);
     const result = store.addItems(names, actor(ctx), allowDuplicates);
+    const nextState = {
+      ...state,
+      duplicates: result.duplicates,
+      addedCount:
+        state.addedCount === undefined
+          ? undefined
+          : state.addedCount + result.added.length,
+    };
+    persist(nextState);
     const updated = await refreshViews();
     const summary = result.added.length
       ? `Lisätty ${result.added.length}: ${result.added
@@ -341,7 +416,7 @@ export const createHouseholdBot = (
       : "";
     await prompt(
       ctx,
-      { kind: "shopping-add", duplicates: result.duplicates },
+      nextState,
       `${summary}${duplicates}\nLisäystila on päällä: jatka lähettämällä tuotteita. /done lopettaa.${updated ? "" : "\nTallennus onnistui, mutta näkymän päivitys epäonnistui. Käytä Päivitä-painiketta."}`,
     );
   };
@@ -433,17 +508,13 @@ export const createHouseholdBot = (
   bot.command("tasks", (ctx) => openBoard(ctx, tasksView));
   bot.command("week", (ctx) => openBoard(ctx, tasksView));
   bot.command("cancel", async (ctx) => {
-    store.clearSession(ids(ctx).chatId, ctx.from.id);
-    await ctx.reply(
-      "Syöttö lopetettu. Jo tallennetut muutokset säilyvät.",
-      homeKeyboard,
-    );
+    await finishSession(ctx);
   });
   bot.command("add", async (ctx) => {
     const text = ctx.message.text.replace(/^\/add(?:@\w+)?\s*/, "").trim();
     if (!text) return startShopping(ctx);
-    await addShopping(ctx, text);
     await show(ctx, shoppingView);
+    await addShopping(ctx, text);
   });
   bot.command("newtask", async (ctx) => {
     const args = ctx.message.text.replace(/^\/newtask(?:@\w+)?\s*/, "").trim();
@@ -472,12 +543,7 @@ export const createHouseholdBot = (
     if (!value) {
       const session = store.session(ctx.chat.id, ctx.from.id);
       if (session?.state.kind === "shopping-add") {
-        store.clearSession(ctx.chat.id, ctx.from.id);
-        await ctx.reply(
-          "🛒 Ostosten lisäystila lopetettu. Lisätyt tuotteet säilyvät.",
-          homeKeyboard,
-        );
-        await show(ctx, shoppingView);
+        await finishSession(ctx);
       } else {
         await ctx.reply(
           "Ostosten lisäystila ei ole päällä. /add käynnistää sen. Homman valmistuminen: /done <id> tai homman Tehty-painike.",
@@ -735,11 +801,7 @@ export const createHouseholdBot = (
       const { state } = session;
       const operation = ctx.match[1];
       if (operation === "session:end") {
-        store.clearSession(ids(ctx).chatId, ctx.from.id);
-        await ctx.reply(
-          "Syöttö lopetettu. Jo tallennetut muutokset säilyvät.",
-          homeKeyboard,
-        );
+        await finishSession(ctx);
       } else if (
         operation === "session:duplicates" &&
         state.kind === "shopping-add" &&

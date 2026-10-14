@@ -59,7 +59,12 @@ export type Mutation =
   | { kind: "missing" | "stale" | "unchanged" };
 
 export type SessionState =
-  | { kind: "shopping-add"; duplicates?: string[] }
+  | {
+      kind: "shopping-add";
+      duplicates?: string[];
+      addedCount?: number;
+      receivedCount?: number;
+    }
   | { kind: "shopping-rename"; id: number; revision: number }
   | { kind: "task-name" }
   | { kind: "task-interval"; name: string }

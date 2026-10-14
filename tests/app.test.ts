@@ -209,6 +209,157 @@ test("shopping accepts multiline and successive messages without repeating /add,
   assert.equal(h.log.mock.callCount(), 0);
 });
 
+test("privacy-mode group entry guides mysli into a reply before /done", async (t) => {
+  const h = harness(t);
+  await h.text("/add", 10, -123);
+  const prompt = h.sent().at(-1)!;
+  const markup = prompt.payload.reply_markup as {
+    force_reply?: boolean;
+    selective?: boolean;
+  };
+  // Privacy-enabled groups deliver commands and replies, not an ordinary text post.
+  if (markup.force_reply) {
+    await h.text("mysli", 10, -123, prompt.messageId);
+  }
+  await h.text("/done", 10, -123);
+  assert.deepEqual(
+    h.store.items("active").map((item) => item.item),
+    ["mysli"],
+  );
+  assert.equal(markup.force_reply, true);
+  assert.equal(markup.selective, true);
+  assert.equal(h.store.session(-123, 10), undefined);
+});
+
+test("group callback entry renews targeted reply prompts and retains working duplicate and finish buttons", async (t) => {
+  const h = harness(t);
+  await h.text("/list", 10, -123);
+  await h.tap("capture", h.sent().at(-1)!.messageId!, 10, -123);
+  const initialControls = h.session(-123).promptId;
+  const initialPrompt = h.sent().at(-1)!;
+  assert.notEqual(initialPrompt.messageId, initialControls);
+  assert.equal(initialPrompt.payload.parse_mode, "HTML");
+  assert.ok(
+    String(initialPrompt.payload.text).startsWith(
+      '<a href="tg://user?id=10">Jan</a>',
+    ),
+  );
+  await h.text("mysli & <siemenet>\nmaito", 10, -123, initialPrompt.messageId);
+  const nextPrompt = h.sent().at(-1)!;
+  assert.ok(
+    String(nextPrompt.payload.text).includes("mysli &amp; &lt;siemenet&gt;"),
+  );
+  assert.equal(
+    (nextPrompt.payload.reply_markup as { force_reply?: boolean }).force_reply,
+    true,
+  );
+  assert.equal(h.session(-123).state.kind, "shopping-add");
+  await h.text("maito", 10, -123, nextPrompt.messageId);
+  const duplicateControls = h.session(-123).promptId;
+  await h.tap("session:duplicates:10", duplicateControls, 10, -123);
+  assert.equal(h.store.items("active").length, 3);
+  await h.tap("session:end:10", initialControls, 10, -123);
+  assert.ok(h.store.session(-123, 10));
+  await h.tap("session:end:10", h.session(-123).promptId, 10, -123);
+  assert.equal(h.store.session(-123, 10), undefined);
+  assert.ok(
+    h
+      .sent()
+      .some((call) => String(call.payload.text).includes("Lisätty 3 tuotetta")),
+  );
+  await h.text("Ei kuulu listalle", 10, -123, nextPrompt.messageId);
+  assert.equal(h.store.items("active").length, 3);
+  assert.equal(h.log.mock.callCount(), 0);
+});
+
+test("group /add with initial items leaves a reply prompt ready for the next message", async (t) => {
+  const h = harness(t);
+  await h.text("/add mysli", 10, -123);
+  const prompt = h.sent().at(-1)!;
+  assert.equal(
+    (prompt.payload.reply_markup as { force_reply?: boolean }).force_reply,
+    true,
+  );
+  await h.text("kahvi\nmaito", 10, -123, prompt.messageId);
+  h.restart();
+  await h.text("/done", 10, -123);
+  assert.deepEqual(
+    h.store.items("active").map((item) => item.item),
+    ["mysli", "kahvi", "maito"],
+  );
+  assert.ok(
+    h
+      .sent()
+      .some((call) => String(call.payload.text).includes("Lisätty 3 tuotetta")),
+  );
+  assert.equal(h.log.mock.callCount(), 0);
+});
+
+test("finishing without delivered item messages warns rather than implying items were saved", async (t) => {
+  const h = harness(t);
+  await h.text("/add", 10, -123);
+  // Simulate dismissing Telegram's reply composer: the ordinary message never reaches the bot.
+  await h.text("/done", 10, -123);
+  assert.equal(h.store.items().length, 0);
+  assert.ok(
+    h
+      .sent()
+      .some((call) =>
+        String(call.payload.text).includes(
+          "En vastaanottanut yhtään tuoteviestiä",
+        ),
+      ),
+  );
+  assert.ok(
+    h
+      .sent()
+      .some((call) => String(call.payload.text).includes("Lisätty 0 tuotetta")),
+  );
+  await h.text("/add", 10, -123);
+  await h.text("x".repeat(201), 10, -123, h.sent().at(-1)!.messageId);
+  const beforeFinish = h.sent().length;
+  await h.text("/done", 10, -123);
+  const finishReplies = h.sent().slice(beforeFinish);
+  assert.ok(
+    finishReplies.some((call) =>
+      String(call.payload.text).includes("Lisätty 0 tuotetta"),
+    ),
+  );
+  assert.ok(
+    !finishReplies.some((call) =>
+      String(call.payload.text).includes("En vastaanottanut"),
+    ),
+  );
+});
+
+test("existing persisted add sessions without counters finish without inventing a saved-item count", async (t) => {
+  const h = harness(t);
+  h.store.addItems(["mysli"], { id: 10, name: "Jan" });
+  h.store.setSession(-123, 10, {
+    state: { kind: "shopping-add" },
+    promptId: 100,
+    expiresAt: Date.parse("2026-10-13T10:00:00Z"),
+  });
+  await h.text("/done", 10, -123);
+  assert.equal(h.store.items("active").length, 1);
+  assert.ok(
+    h
+      .sent()
+      .some((call) =>
+        String(call.payload.text).includes("Jo lisätyt tuotteet säilyvät"),
+      ),
+  );
+  assert.ok(
+    !h
+      .sent()
+      .some(
+        (call) =>
+          String(call.payload.text).includes("Lisätty 0") ||
+          String(call.payload.text).includes("En vastaanottanut"),
+      ),
+  );
+});
+
 test("duplicate items require explicit opt-in and old duplicate buttons cannot add them twice", async (t) => {
   const h = harness(t);
   await h.text("/add Kahvi");
